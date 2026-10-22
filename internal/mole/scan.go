@@ -110,10 +110,13 @@ func (s *Scanner) Scan(ctx context.Context, onProgress func(clean.ScanProgress) 
 	if err != nil {
 		return clean.ScanResult{}, fmt.Errorf("opening Mole clean-list: %w", err)
 	}
-	defer list.Close()
 	result, err := ParseCleanList(s.home, list, s.logger)
 	if err != nil {
+		_ = list.Close()
 		return clean.ScanResult{}, err
+	}
+	if err := list.Close(); err != nil {
+		return clean.ScanResult{}, fmt.Errorf("closing Mole clean-list: %w", err)
 	}
 	var found int64
 	complete := 1.0

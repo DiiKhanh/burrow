@@ -67,8 +67,8 @@ wait "$child"
 		}
 	case <-time.After(500 * time.Millisecond):
 		_ = syscall.Kill(childPID, syscall.SIGKILL)
-		<-done
-		t.Fatal("Scan stayed alive after cancellation because a Mole child survived")
+		cleanupErr := <-done
+		t.Fatalf("Scan stayed alive after cancellation because a Mole child survived; cleanup returned %v", cleanupErr)
 	}
 	if err := syscall.Kill(childPID, 0); !errors.Is(err, syscall.ESRCH) {
 		_ = syscall.Kill(childPID, syscall.SIGKILL)
