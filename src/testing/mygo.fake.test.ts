@@ -5,7 +5,10 @@ import { Clean, Status } from "../mygo";
 
 describe("the MyGo client under test", () => {
   it("is the fake", async () => {
-    await expect(Clean.ping()).resolves.toBeUndefined();
     await expect(Status.ping()).resolves.toBeUndefined();
+  });
+
+  it("exposes the Scan result contract", async () => {
+    await expect(Clean.scan({} as never)).resolves.toEqual({ groups: [] });
   });
 });

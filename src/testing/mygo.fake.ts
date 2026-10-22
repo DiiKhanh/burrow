@@ -4,7 +4,7 @@
 import type * as Real from "../mygo";
 
 export const Clean = {
-  ping: async () => {},
+  scan: async (_updates: Parameters<typeof Real.Clean.scan>[0]): Promise<Real.ScanResult> => ({ groups: [] }),
 } as const satisfies typeof Real.Clean;
 
 export const Status = {
