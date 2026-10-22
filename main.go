@@ -3,8 +3,10 @@
 package main
 
 import (
+	"fmt"
 	"log"
 
+	"github.com/DiiKhanh/burrow/internal/mole"
 	"github.com/DiiKhanh/burrow/internal/service"
 	"github.com/egoist/mygo"
 )
@@ -18,6 +20,10 @@ func main() {
 	mygo.Theme.SetSource(mygo.ThemeDark)
 
 	mygo.App.WhenReady(func() {
+		// Checked once the app runs: `mygo generate` runs main without resources.
+		if _, err := locateMole(); err != nil {
+			log.Fatalf("starting Burrow: %v", err)
+		}
 		mygo.NewWindow(mygo.WindowOptions{
 			Title:           "Burrow",
 			Width:           1100,
@@ -35,4 +41,13 @@ func main() {
 	if err := mygo.App.Run(); err != nil {
 		log.Fatalf("running Burrow: %v", err)
 	}
+}
+
+// locateMole finds the Mole release Burrow ships, never one the user installed.
+func locateMole() (mole.Bundle, error) {
+	resources, err := mygo.App.Path(mygo.PathResources)
+	if err != nil {
+		return mole.Bundle{}, fmt.Errorf("finding the app's resources: %w", err)
+	}
+	return mole.Locate(resources)
 }

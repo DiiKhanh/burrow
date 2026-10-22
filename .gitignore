@@ -11,3 +11,8 @@ mygo_windows_*.syso
 # Test output
 /test-results/
 /playwright-report/
+
+# Mole, unpacked by tools/fetchmole from mole.lock
+/resources/darwin-arm64/mole/
+/resources/darwin-arm64/.mole.old/
+/resources/darwin-arm64/.mole-staging-*/
