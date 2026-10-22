@@ -16,6 +16,18 @@ _Avoid_: upstream, the CLI
 The feature that finds reclaimable junk on the Mac, previews it, and removes what the user picks.
 _Avoid_: Cleanup, sweep, purge
 
+**Scan**:
+The step of Clean that finds junk items without removing anything.
+_Avoid_: Dry run, analyze
+
+**Junk item**:
+One path that a Scan proposes for removal, with its size.
+_Avoid_: Entry, file, target
+
+**Junk group**:
+A named category of junk items (e.g. Browsers, Developer tools) that the user can select as a whole.
+_Avoid_: Section, category
+
 **Status**:
 The feature that shows live system health of the Mac.
 _Avoid_: Dashboard, monitor
