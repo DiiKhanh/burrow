@@ -28,6 +28,22 @@ _Avoid_: Entry, file, target
 A named category of junk items (e.g. Browsers, Developer tools) that the user can select as a whole.
 _Avoid_: Section, category
 
+**Locked junk group**:
+A junk group that cannot be selected right now because the app that owns it is running.
+_Avoid_: Disabled group, blocked group
+
+**Delete**:
+Removing a junk item for good, freeing its space immediately.
+_Avoid_: Purge, wipe, erase
+
+**Move to Trash**:
+Removing a junk item into the macOS Trash, where it can still be put back; its space is freed only when the Trash is emptied.
+_Avoid_: Soft delete, recycle
+
+**Skipped item**:
+A selected junk item that Clean did not remove, always with a reason (in use, permission denied, protected, already gone).
+_Avoid_: Failed item, error
+
 **Status**:
 The feature that shows live system health of the Mac.
 _Avoid_: Dashboard, monitor
