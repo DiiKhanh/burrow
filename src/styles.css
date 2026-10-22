@@ -67,6 +67,38 @@
   --shadow-pill: 0 8px 30px rgb(0 0 0 / 0.35);
 }
 
+.scan-layer-progress {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--color-size);
+  opacity: 0.22;
+}
+
+.scan-layer-progress::-webkit-progress-bar {
+  background: transparent;
+}
+
+.scan-layer-progress::-webkit-progress-value {
+  background: var(--color-size);
+  transition: width 300ms ease;
+}
+
+.scan-layer-progress:indeterminate {
+  background: linear-gradient(90deg, transparent 0%, var(--color-size) 50%, transparent 100%);
+  background-size: 45% 100%;
+  animation: scan-indeterminate 1.4s ease-in-out infinite;
+}
+
+@keyframes scan-indeterminate {
+  from {
+    background-position-x: -80%;
+  }
+  to {
+    background-position-x: 180%;
+  }
+}
+
 /* Drags the window, as a title bar does; buttons inside stay clickable. */
 @utility drag-region {
   --app-region: drag;
