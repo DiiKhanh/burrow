@@ -1,0 +1,24 @@
+version: 2
+
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      mygo:
+        patterns: ["github.com/egoist/mygo"]
+
+  # npm packages, locked in bun.lock.
+  - package-ecosystem: bun
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      mygo:
+        patterns: ["mygo-cli", "mygo-runtime"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
