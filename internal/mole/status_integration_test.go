@@ -29,8 +29,8 @@ func TestIntegrationBundledStatusStreamsSamples(t *testing.T) {
 	if last.CPU.Usage == nil || last.CPU.Load1 == nil {
 		t.Errorf("CPU = %+v, want usage and load", last.CPU)
 	}
-	if last.Health.Score == nil || last.Health.Level == nil {
-		t.Errorf("health = %+v, want a score and a level", last.Health)
+	if last.HealthScore.Score == nil || last.HealthScore.Level == nil {
+		t.Errorf("health score = %+v, want a score and a level Burrow knows", last.HealthScore)
 	}
 	if last.Hardware.CPUModel == nil || last.Hardware.OSVersion == nil {
 		t.Errorf("hardware = %+v, want the CPU model and macOS version", last.Hardware)

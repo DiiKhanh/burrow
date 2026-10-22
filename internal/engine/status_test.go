@@ -65,8 +65,8 @@ func TestWatchStatusSendsASnapshotPerSample(t *testing.T) {
 	if last.UptimeSeconds == nil || *last.UptimeSeconds != 101 {
 		t.Errorf("uptime = %v, want 101", last.UptimeSeconds)
 	}
-	if last.Health.Level == nil || *last.Health.Level != mole.HealthExcellent {
-		t.Errorf("health level = %v, want excellent", last.Health.Level)
+	if last.HealthScore.Level == nil || *last.HealthScore.Level != mole.HealthExcellent {
+		t.Errorf("health level = %v, want excellent", last.HealthScore.Level)
 	}
 	if want := []*float64{ptr(12.5), ptr(40.0)}; !reflect.DeepEqual(last.Series.CPU, want) {
 		t.Errorf("CPU series = %v, want [12.5 40]", values(last.Series.CPU))

@@ -20,11 +20,11 @@ type StatusSource func(ctx context.Context, yield func(mole.StatusSample)) error
 // Snapshot is what the Status tab shows: the latest sample with the recent
 // history of each sparkline. A nil field could not be read.
 type Snapshot struct {
-	Health        mole.Health   `json:"health"`
-	Hardware      mole.Hardware `json:"hardware"`
-	UptimeSeconds *uint64       `json:"uptimeSeconds"`
-	CPU           mole.CPU      `json:"cpu"`
-	Series        Series        `json:"series"`
+	HealthScore   mole.HealthScore `json:"healthScore"`
+	Hardware      mole.Hardware    `json:"hardware"`
+	UptimeSeconds *uint64          `json:"uptimeSeconds"`
+	CPU           mole.CPU         `json:"cpu"`
+	Series        Series           `json:"series"`
 }
 
 // Series holds up to SeriesLength samples per sparkline, oldest first. A
@@ -41,21 +41,18 @@ func WatchStatus(ctx context.Context, source StatusSource, emit func(Snapshot)) 
 	return source(ctx, func(s mole.StatusSample) {
 		cpu = latest(cpu, s.CPU.Usage)
 		emit(Snapshot{
-			Health:        s.Health,
+			HealthScore:   s.HealthScore,
 			Hardware:      s.Hardware,
 			UptimeSeconds: s.UptimeSeconds,
 			CPU:           s.CPU,
-			// Each snapshot gets its own copy: emitted ones stay as they were.
-			Series: Series{CPU: slices.Clone(cpu)},
+			Series:        Series{CPU: cpu},
 		})
 	})
 }
 
-// latest appends v, dropping the oldest samples past SeriesLength.
+// latest returns a new series of the last SeriesLength samples ending
+// with v. It never changes series, which an emitted Snapshot may hold.
 func latest(series []*float64, v *float64) []*float64 {
-	series = append(series, v)
-	if len(series) > SeriesLength {
-		series = slices.Delete(series, 0, len(series)-SeriesLength)
-	}
-	return series
+	kept := series[max(0, len(series)-SeriesLength+1):]
+	return append(slices.Clip(kept), v)
 }

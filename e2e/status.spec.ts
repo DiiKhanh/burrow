@@ -12,6 +12,8 @@ function card(page: Page, name: string) {
 }
 
 test.beforeEach(async ({ page }) => {
+  // Uptime counts back from the clock to the day the Mac started.
+  await page.clock.setFixedTime(new Date(2026, 9, 23, 12, 0, 0));
   await page.goto("/");
 });
 
@@ -24,7 +26,7 @@ test("shows the Health and CPU cards from Go's snapshot", async ({ page }) => {
   await expect(health).toContainText("Restart recommended");
   await expect(health).toContainText("Apple M2 · 16.0 GB");
   await expect(health).toContainText("macOS 15.7.9");
-  await expect(health).toContainText("up 21 days");
+  await expect(health).toContainText("up 21 days · since Oct 2");
 
   const cpu = card(page, "CPU");
   await expect(cpu).toContainText("30%");
@@ -45,7 +47,7 @@ test("shows a dash for each field Go could not read", async ({ page }) => {
   await sendStatus(
     page,
     snapshot({
-      health: { score: null, level: null, reasons: [] },
+      healthScore: { score: null, level: null, reasons: [] },
       hardware: { cpuModel: null, ram: null, osVersion: null },
       uptimeSeconds: null,
       cpu: { usage: null, load1: null, load5: null, load15: null, pCores: null, eCores: null },
@@ -60,7 +62,7 @@ test("shows a dash for each field Go could not read", async ({ page }) => {
 
 test("colors the Health level by how serious it is", async ({ page }) => {
   await page.keyboard.press("Meta+2");
-  await sendStatus(page, snapshot({ health: { score: 38, level: "needs-attention", reasons: ["overheating"] } }));
+  await sendStatus(page, snapshot({ healthScore: { score: 38, level: "needs-attention", reasons: ["overheating"] } }));
 
   // --color-danger in src/styles.css.
   await expect(card(page, "Health").getByText("Overheating")).toHaveCSS("color", "rgb(255, 107, 97)");

@@ -6,6 +6,9 @@ import { Card, Metric } from "./Card";
 
 const text = strings.status.cpu;
 
+/** A full bar: every core busy. */
+const FULL_USAGE = 100;
+
 /** CPU usage over the last minute, load averages and the core split. */
 export function CpuCard({ snapshot }: { snapshot: Snapshot | null }) {
   const cpu = snapshot?.cpu;
@@ -15,13 +18,13 @@ export function CpuCard({ snapshot }: { snapshot: Snapshot | null }) {
   return (
     <Card
       title={text.title}
-      icon="▦"
+      icon={text.icon}
       tone="text-cpu"
       badge={pCores === null || eCores === null ? undefined : text.cores(pCores, eCores)}
       foot={text.load(formatLoad(cpu?.load1 ?? null), formatLoad(cpu?.load5 ?? null), formatLoad(cpu?.load15 ?? null))}
     >
       <Metric value={formatPercent(usage)} unit={usage === null ? undefined : strings.units.percent} />
-      <BarSpark data={snapshot?.series.cpu ?? []} max={100} className="h-8.5 w-full fill-cpu" />
+      <BarSpark data={snapshot?.series.cpu ?? []} max={FULL_USAGE} className="h-8.5 w-full fill-cpu" />
     </Card>
   );
 }

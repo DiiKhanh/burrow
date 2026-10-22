@@ -14,14 +14,15 @@ import (
 // StatusSample is one reading of the Mac's health from the status
 // collector. A field is nil when Mole did not report it.
 type StatusSample struct {
-	Health        Health   `json:"health"`
-	Hardware      Hardware `json:"hardware"`
-	UptimeSeconds *uint64  `json:"uptimeSeconds"`
-	CPU           CPU      `json:"cpu"`
+	HealthScore   HealthScore `json:"healthScore"`
+	Hardware      Hardware    `json:"hardware"`
+	UptimeSeconds *uint64     `json:"uptimeSeconds"`
+	CPU           CPU         `json:"cpu"`
 }
 
-// Health is Mole's Health score with its level and the issues behind it.
-type Health struct {
+// HealthScore is Mole's 0-100 Health score with its level and the issues
+// that lowered it.
+type HealthScore struct {
 	Score   *int           `json:"score"`
 	Level   *HealthLevel   `json:"level"`
 	Reasons []HealthReason `json:"reasons"`
@@ -97,10 +98,15 @@ var (
 	}
 )
 
-// WatchStatus runs the bundled status collector, one sample a second, and
+// StatusInterval is how often the collector samples: Status refreshes
+// every second (#10).
+const StatusInterval = "1s"
+
+// WatchStatus runs the bundled status collector, one sample per
+// StatusInterval, and
 // passes each sample to yield until ctx ends or the collector stops.
 func (b Bundle) WatchStatus(ctx context.Context, yield func(StatusSample)) error {
-	cmd := exec.CommandContext(ctx, b.Status(), "--watch", "--interval", "1s")
+	cmd := exec.CommandContext(ctx, b.Status(), "--watch", "--interval", StatusInterval)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return fmt.Errorf("mole: connecting to the status collector: %w", err)
@@ -162,7 +168,7 @@ type snapshot struct {
 func (s snapshot) sample() StatusSample {
 	level, reasons := parseHealthMessage(s.HealthScoreMsg)
 	return StatusSample{
-		Health:        Health{Score: s.HealthScore, Level: level, Reasons: reasons},
+		HealthScore:   HealthScore{Score: s.HealthScore, Level: level, Reasons: reasons},
 		UptimeSeconds: s.UptimeSeconds,
 		// Mole's first, fast snapshot leaves hardware blank and cores at 0.
 		Hardware: Hardware{

@@ -4,6 +4,19 @@ import type { HealthLevel, HealthReason } from "./mygo";
 
 const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
 
+/** Between the parts of one line, e.g. "Apple M2 · 16.0 GB". */
+const SEPARATOR = " · ";
+
+const dayOfYear = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" });
+
+/** "21 days": the largest whole unit only. */
+function duration(seconds: number): string {
+  if (seconds < 60) return plural(seconds, "second", "seconds");
+  if (seconds < 3_600) return plural(Math.floor(seconds / 60), "minute", "minutes");
+  if (seconds < 86_400) return plural(Math.floor(seconds / 3_600), "hour", "hours");
+  return plural(Math.floor(seconds / 86_400), "day", "days");
+}
+
 export const strings = {
   app: {
     name: "Burrow",
@@ -21,6 +34,7 @@ export const strings = {
   status: {
     health: {
       title: "Health",
+      icon: "◉",
       levels: {
         excellent: "Excellent",
         good: "Good",
@@ -41,19 +55,16 @@ export const strings = {
       } satisfies Record<HealthReason, string>,
       allClear: "All checks passed",
       /** "Apple M2 · 16.0 GB" */
-      chip: (cpuModel: string, ram: string) => `${cpuModel} · ${ram}`,
-      /** "up 21 days": the largest whole unit only. */
-      uptime: (seconds: number) => {
-        if (seconds < 60) return `up ${plural(seconds, "second", "seconds")}`;
-        if (seconds < 3_600) return `up ${plural(Math.floor(seconds / 60), "minute", "minutes")}`;
-        if (seconds < 86_400) return `up ${plural(Math.floor(seconds / 3_600), "hour", "hours")}`;
-        return `up ${plural(Math.floor(seconds / 86_400), "day", "days")}`;
-      },
+      chip: (cpuModel: string, ram: string) => [cpuModel, ram].join(SEPARATOR),
+      /** "up 21 days · since Oct 2": how long since the Mac started, and when. */
+      uptime: (seconds: number, now: Date) =>
+        [`up ${duration(seconds)}`, `since ${dayOfYear.format(now.getTime() - seconds * 1000)}`].join(SEPARATOR),
     },
     cpu: {
       title: "CPU",
+      icon: "▦",
       /** "Load 3.76 · 3.16 · 3.75": 1, 5 and 15 minute averages. */
-      load: (load1: string, load5: string, load15: string) => `Load ${load1} · ${load5} · ${load15}`,
+      load: (load1: string, load5: string, load15: string) => `Load ${[load1, load5, load15].join(SEPARATOR)}`,
       /** "4P + 4E cores": performance and efficiency cores. */
       cores: (performance: number, efficiency: number) => `${performance}P + ${efficiency}E cores`,
     },
@@ -64,5 +75,5 @@ export const strings = {
 
 /** Reasons in the catalog's words, joined for one line. */
 export function healthReasons(reasons: readonly HealthReason[]): string {
-  return reasons.map((reason) => strings.status.health.reasons[reason]).join(" · ");
+  return reasons.map((reason) => strings.status.health.reasons[reason]).join(SEPARATOR);
 }

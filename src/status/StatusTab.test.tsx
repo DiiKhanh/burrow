@@ -1,5 +1,5 @@
 import { act, render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Snapshot } from "../mygo";
 import { events } from "../testing/mygo.fake";
 import { snapshot } from "../testing/snapshots";
@@ -12,6 +12,16 @@ function show(s: Snapshot) {
 function card(name: string) {
   return within(screen.getByRole("region", { name }));
 }
+
+// Uptime counts back from the clock to the day the Mac started.
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date(2026, 9, 23, 12, 0, 0));
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe("Status tab", () => {
   it("lays out the bento grid with Health and CPU first", () => {
@@ -35,14 +45,14 @@ describe("Health card", () => {
     expect(health.getByText("Good")).toBeVisible();
     expect(health.getByText("Apple M2 · 16.0 GB")).toBeVisible();
     expect(health.getByText("macOS 15.7.9")).toBeVisible();
-    expect(health.getByText("up 21 days")).toBeVisible();
+    expect(health.getByText("up 21 days · since Oct 2")).toBeVisible();
   });
 
   it("explains the score with every reason, in the catalog's words", () => {
     render(<StatusTab />);
     show(
       snapshot({
-        health: { score: 41, level: "needs-attention", reasons: ["disk-almost-full", "restart-recommended"] },
+        healthScore: { score: 41, level: "needs-attention", reasons: ["disk-almost-full", "restart-recommended"] },
       }),
     );
     const health = card("Health");
@@ -52,15 +62,15 @@ describe("Health card", () => {
 
   it("says all checks passed when nothing lowered the score", () => {
     render(<StatusTab />);
-    show(snapshot({ health: { score: 96, level: "excellent", reasons: [] } }));
+    show(snapshot({ healthScore: { score: 96, level: "excellent", reasons: [] } }));
     expect(card("Health").getByText("All checks passed")).toBeVisible();
   });
 
   it.each([
-    [59, "up 59 seconds"],
-    [60, "up 1 minute"],
-    [7_200, "up 2 hours"],
-    [86_400, "up 1 day"],
+    [59, "up 59 seconds · since Oct 23"],
+    [60, "up 1 minute · since Oct 23"],
+    [7_200, "up 2 hours · since Oct 23"],
+    [86_400, "up 1 day · since Oct 22"],
   ])("shows %d seconds of uptime as %s", (uptimeSeconds, text) => {
     render(<StatusTab />);
     show(snapshot({ uptimeSeconds }));
@@ -71,7 +81,7 @@ describe("Health card", () => {
     render(<StatusTab />);
     show(
       snapshot({
-        health: { score: null, level: null, reasons: [] },
+        healthScore: { score: null, level: null, reasons: [] },
         hardware: { cpuModel: null, ram: null, osVersion: null },
         uptimeSeconds: null,
       }),

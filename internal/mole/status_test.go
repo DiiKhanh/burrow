@@ -30,7 +30,7 @@ func TestDecodeStatusReadsEverySampleOfTheStream(t *testing.T) {
 	}
 
 	want := StatusSample{
-		Health: Health{
+		HealthScore: HealthScore{
 			Score:   ptr(77),
 			Level:   ptr(HealthGood),
 			Reasons: []HealthReason{ReasonRestartRecommended},
@@ -75,8 +75,8 @@ func TestDecodeStatusLeavesWhatMoleHasNotCollectedYetEmpty(t *testing.T) {
 	if first.CPU.Usage == nil || *first.CPU.Usage != 18.951923003426682 {
 		t.Errorf("usage = %v, want 18.95…", first.CPU.Usage)
 	}
-	if want := []HealthReason{ReasonDiskAlmostFull, ReasonRestartRecommended}; !reflect.DeepEqual(first.Health.Reasons, want) {
-		t.Errorf("reasons = %v, want %v", first.Health.Reasons, want)
+	if want := []HealthReason{ReasonDiskAlmostFull, ReasonRestartRecommended}; !reflect.DeepEqual(first.HealthScore.Reasons, want) {
+		t.Errorf("reasons = %v, want %v", first.HealthScore.Reasons, want)
 	}
 }
 
@@ -106,7 +106,7 @@ func TestDecodeStatusReadsTheHealthLevel(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got := samples[0].Health.Level; !reflect.DeepEqual(got, want) {
+			if got := samples[0].HealthScore.Level; !reflect.DeepEqual(got, want) {
 				t.Errorf("level = %v, want %v", deref(got), deref(want))
 			}
 		})
@@ -124,7 +124,7 @@ func TestDecodeStatusReadsEveryHealthReasonMoleGives(t *testing.T) {
 		ReasonHighCPU, ReasonHighMemory, ReasonMemoryPressure, ReasonCriticalMemory, ReasonDiskAlmostFull,
 		ReasonDiskSMARTFailing, ReasonOverheating, ReasonHeavyDiskIO, ReasonBatteryServiceSoon, ReasonRestartRecommended,
 	}
-	if got := samples[0].Health.Reasons; !reflect.DeepEqual(got, want) {
+	if got := samples[0].HealthScore.Reasons; !reflect.DeepEqual(got, want) {
 		t.Errorf("reasons = %v, want %v", got, want)
 	}
 }
@@ -134,7 +134,7 @@ func TestDecodeStatusDropsHealthReasonsItDoesNotKnow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := samples[0].Health.Reasons, []HealthReason{ReasonHighCPU}; !reflect.DeepEqual(got, want) {
+	if got, want := samples[0].HealthScore.Reasons, []HealthReason{ReasonHighCPU}; !reflect.DeepEqual(got, want) {
 		t.Errorf("reasons = %v, want %v", got, want)
 	}
 }

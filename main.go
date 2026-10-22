@@ -49,14 +49,14 @@ func main() {
 // watchStatusWhileShown runs Status only while win is on screen, on any
 // tab: hidden, minimized or closed, Burrow collects nothing.
 func watchStatusWhileShown(win *mygo.Window, watcher *engine.StatusWatcher) {
-	win.OnShow(watcher.Show)
-	win.OnRestore(watcher.Show)
-	win.OnHide(watcher.Hide)
-	win.OnMinimize(watcher.Hide)
-	win.OnClosed(watcher.Hide)
+	win.OnShow(watcher.Start)
+	win.OnRestore(watcher.Start)
+	win.OnHide(watcher.Stop)
+	win.OnMinimize(watcher.Stop)
+	win.OnClosed(watcher.Stop)
 	// NewWindow showed the window before these listeners existed.
 	if win.IsVisible() && !win.IsMinimized() {
-		watcher.Show()
+		watcher.Start()
 	}
 }
 

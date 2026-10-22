@@ -2,7 +2,9 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -86,9 +88,9 @@ func (s *screen) cpuSeries() [][]any {
 func TestStatusWatcherCollectsWhileTheWindowIsShown(t *testing.T) {
 	c, page := newCollector(), &screen{}
 	w := NewStatusWatcher(c.source, page.show)
-	defer w.Hide()
+	defer w.Stop()
 
-	w.Show()
+	w.Start()
 	run := c.nextRun(t)
 	run.send(10)
 	run.send(20)
@@ -102,10 +104,10 @@ func TestStatusWatcherStopsWhenTheWindowIsHidden(t *testing.T) {
 	c, page := newCollector(), &screen{}
 	w := NewStatusWatcher(c.source, page.show)
 
-	w.Show()
+	w.Start()
 	run := c.nextRun(t)
 	run.send(10)
-	w.Hide()
+	w.Stop()
 
 	run.stopped(t)
 	run.send(20) // already collected when the window hid
@@ -117,16 +119,16 @@ func TestStatusWatcherStopsWhenTheWindowIsHidden(t *testing.T) {
 func TestStatusWatcherStartsHistoryAgainWhenTheWindowReturns(t *testing.T) {
 	c, page := newCollector(), &screen{}
 	w := NewStatusWatcher(c.source, page.show)
-	defer w.Hide()
+	defer w.Stop()
 
-	w.Show()
+	w.Start()
 	first := c.nextRun(t)
 	first.send(10)
 	first.send(20)
-	w.Hide()
+	w.Stop()
 	first.stopped(t)
 
-	w.Show()
+	w.Start()
 	second := c.nextRun(t)
 	second.send(30)
 
@@ -139,11 +141,11 @@ func TestStatusWatcherStartsHistoryAgainWhenTheWindowReturns(t *testing.T) {
 func TestStatusWatcherRunsOneCollectorAtATime(t *testing.T) {
 	c := newCollector()
 	w := NewStatusWatcher(c.source, func(Snapshot) {})
-	defer w.Hide()
+	defer w.Stop()
 
-	w.Show()
+	w.Start()
 	c.nextRun(t)
-	w.Show()
+	w.Start()
 	c.noRun(t)
 }
 
@@ -151,10 +153,74 @@ func TestStatusWatcherIgnoresHidingWhileHidden(t *testing.T) {
 	c := newCollector()
 	w := NewStatusWatcher(c.source, func(Snapshot) {})
 
-	w.Hide()
-	w.Show()
+	w.Stop()
+	w.Start()
 	run := c.nextRun(t)
-	w.Hide()
-	w.Hide()
+	w.Stop()
+	w.Stop()
 	run.stopped(t)
+}
+
+func TestStatusWatcherStartsAgainAfterTheCollectorStopsOnItsOwn(t *testing.T) {
+	runs := make(chan struct{}, 4)
+	crashing := func(context.Context, func(mole.StatusSample)) error {
+		runs <- struct{}{}
+		return errors.New("status-go exited")
+	}
+	w := NewStatusWatcher(crashing, func(Snapshot) {})
+	defer w.Stop()
+
+	w.Start()
+	waitFor(t, runs)
+	// The window shows again (focus, restore) some time after the crash.
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		w.Start()
+		select {
+		case <-runs:
+			return
+		case <-time.After(10 * time.Millisecond):
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the collector was not started again")
+		}
+	}
+}
+
+func TestStatusWatcherStartsTheNextCollectorOnceTheLastOneExited(t *testing.T) {
+	exited := make(chan struct{})
+	runs := make(chan int64, 4)
+	var count atomic.Int64
+	lingering := func(ctx context.Context, _ func(mole.StatusSample)) error {
+		n := count.Add(1)
+		runs <- n
+		<-ctx.Done()
+		if n == 1 {
+			<-exited // the first collector takes its time to exit
+		}
+		return ctx.Err()
+	}
+	w := NewStatusWatcher(lingering, func(Snapshot) {})
+	defer w.Stop()
+
+	w.Start()
+	waitFor(t, runs)
+	w.Stop()
+	w.Start()
+	select {
+	case <-runs:
+		t.Fatal("a second collector started while the first was still exiting")
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(exited)
+	waitFor(t, runs)
+}
+
+func waitFor[T any](t *testing.T, ch <-chan T) {
+	t.Helper()
+	select {
+	case <-ch:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out")
+	}
 }

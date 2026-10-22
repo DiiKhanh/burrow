@@ -23,18 +23,21 @@ export interface Hardware {
   osVersion: string | null;
 }
 
-/** Health is Mole's Health score with its level and the issues behind it. */
-export interface Health {
-  score: number | null;
-  level: HealthLevel | null;
-  reasons: HealthReason[];
-}
-
 /** HealthLevel is the band of the Health score Mole names. */
 export type HealthLevel = "excellent" | "good" | "fair" | "needs-attention";
 
 /** HealthReason is one issue that lowered the Health score. */
 export type HealthReason = "high-cpu" | "high-memory" | "memory-pressure" | "critical-memory" | "disk-almost-full" | "disk-smart-failing" | "overheating" | "heavy-disk-io" | "battery-service-soon" | "restart-recommended";
+
+/**
+ * HealthScore is Mole's 0-100 Health score with its level and the issues
+ * that lowered it.
+ */
+export interface HealthScore {
+  score: number | null;
+  level: HealthLevel | null;
+  reasons: HealthReason[];
+}
 
 /**
  * Series holds up to SeriesLength samples per sparkline, oldest first. A
@@ -50,7 +53,7 @@ export interface Series {
  * history of each sparkline. A nil field could not be read.
  */
 export interface Snapshot {
-  health: Health;
+  healthScore: HealthScore;
   hardware: Hardware;
   uptimeSeconds: number | null;
   cpu: CPU;
