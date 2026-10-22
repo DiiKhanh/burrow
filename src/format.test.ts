@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatBytes, formatSpeed } from "./format";
+import { formatBytes, formatLoad, formatPercent, formatSpeed } from "./format";
 
 describe("formatBytes", () => {
   it.each([
@@ -52,5 +52,34 @@ describe("formatSpeed", () => {
 
   it.each([null, Number.NaN, -5])("shows %s as a dash", (bytesPerSecond) => {
     expect(formatSpeed(bytesPerSecond)).toBe("-");
+  });
+});
+
+describe("formatPercent", () => {
+  it.each([
+    [0, "0"],
+    [30.164, "30"],
+    [87.5, "88"],
+    [100, "100"],
+  ])("formats %d percent as %s", (percent, expected) => {
+    expect(formatPercent(percent)).toBe(expected);
+  });
+
+  it.each([null, Number.NaN, -1])("shows %s as a dash", (percent) => {
+    expect(formatPercent(percent)).toBe("-");
+  });
+});
+
+describe("formatLoad", () => {
+  it.each([
+    [0, "0.00"],
+    [3.76025390625, "3.76"],
+    [12.5, "12.50"],
+  ])("formats a load of %d as %s", (load, expected) => {
+    expect(formatLoad(load)).toBe(expected);
+  });
+
+  it.each([null, Number.NaN, -1])("shows %s as a dash", (load) => {
+    expect(formatLoad(load)).toBe("-");
   });
 });

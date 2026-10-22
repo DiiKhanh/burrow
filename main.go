@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/DiiKhanh/burrow/internal/engine"
 	"github.com/DiiKhanh/burrow/internal/mole"
 	"github.com/DiiKhanh/burrow/internal/service"
 	"github.com/egoist/mygo"
@@ -21,10 +22,11 @@ func main() {
 
 	mygo.App.WhenReady(func() {
 		// Checked once the app runs: `mygo generate` runs main without resources.
-		if _, err := locateMole(); err != nil {
+		bundle, err := locateMole()
+		if err != nil {
 			log.Fatalf("starting Burrow: %v", err)
 		}
-		mygo.NewWindow(mygo.WindowOptions{
+		win := mygo.NewWindow(mygo.WindowOptions{
 			Title:           "Burrow",
 			Width:           1100,
 			Height:          760,
@@ -37,9 +39,24 @@ func main() {
 			StateKey:             "main",
 			URL:                  "/",
 		})
+		watchStatusWhileShown(win, engine.NewStatusWatcher(bundle.WatchStatus, service.BroadcastStatus))
 	})
 	if err := mygo.App.Run(); err != nil {
 		log.Fatalf("running Burrow: %v", err)
+	}
+}
+
+// watchStatusWhileShown runs Status only while win is on screen, on any
+// tab: hidden, minimized or closed, Burrow collects nothing.
+func watchStatusWhileShown(win *mygo.Window, watcher *engine.StatusWatcher) {
+	win.OnShow(watcher.Show)
+	win.OnRestore(watcher.Show)
+	win.OnHide(watcher.Hide)
+	win.OnMinimize(watcher.Hide)
+	win.OnClosed(watcher.Hide)
+	// NewWindow showed the window before these listeners existed.
+	if win.IsVisible() && !win.IsMinimized() {
+		watcher.Show()
 	}
 }
 

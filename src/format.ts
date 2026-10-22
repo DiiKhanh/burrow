@@ -6,6 +6,8 @@ const [BYTE, ...BYTE_MULTIPLES] = strings.units.bytes;
 const STEP = 1000;
 
 const threeSignificantDigits = new Intl.NumberFormat("en-US", { maximumSignificantDigits: 3 });
+const wholeNumber = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
+const twoDecimals = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 /** "12.6 GB", "860 MB", "999 B"; "-" for a missing or invalid size. */
 export function formatBytes(bytes: number | null): string {
@@ -18,6 +20,16 @@ export function formatBytes(bytes: number | null): string {
 export function formatSpeed(bytesPerSecond: number | null): string {
   if (!isQuantity(bytesPerSecond)) return strings.unavailable;
   return scale(bytesPerSecond / STEP, strings.units.speed);
+}
+
+/** "30" for 30.16 percent; the unit is shown apart. "-" for a missing value. */
+export function formatPercent(percent: number | null): string {
+  return isQuantity(percent) ? wholeNumber.format(percent) : strings.unavailable;
+}
+
+/** "3.76": a load average, as Activity Monitor shows it. "-" for a missing value. */
+export function formatLoad(load: number | null): string {
+  return isQuantity(load) ? twoDecimals.format(load) : strings.unavailable;
 }
 
 function isQuantity(value: number | null): value is number {
