@@ -2,7 +2,14 @@
 // formats into these codes so callers never need to know about Mole sections.
 package clean
 
-import "context"
+import (
+	"context"
+	"errors"
+	"sync"
+)
+
+// ErrScanInProgress means another Scan already owns the single Scan slot.
+var ErrScanInProgress = errors.New("clean: scan already in progress")
 
 // JunkGroupID is a stable, untranslated junk-group code.
 type JunkGroupID string
@@ -59,4 +66,24 @@ type ScanProgress struct {
 // Scanner is the seam filled by the Mole adapter.
 type Scanner interface {
 	Scan(context.Context, func(ScanProgress) error) (ScanResult, error)
+}
+
+// Engine is the deep module callers use for Clean operations.
+type Engine struct {
+	scanner Scanner
+	scanMu  sync.Mutex
+}
+
+// NewEngine constructs an Engine around its external Scan adapter.
+func NewEngine(scanner Scanner) *Engine {
+	return &Engine{scanner: scanner}
+}
+
+// Scan finds junk without removing anything.
+func (e *Engine) Scan(ctx context.Context, onProgress func(ScanProgress) error) (ScanResult, error) {
+	if !e.scanMu.TryLock() {
+		return ScanResult{}, ErrScanInProgress
+	}
+	defer e.scanMu.Unlock()
+	return e.scanner.Scan(ctx, onProgress)
 }
