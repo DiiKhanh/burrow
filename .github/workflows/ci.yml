@@ -14,7 +14,8 @@ concurrency:
 
 # Every job runs on macOS: the engine depends on macOS behavior. Go comes
 # from the toolchain line of go.mod, Bun from packageManager in package.json,
-# and every step past setup is a package.json script.
+# and every step past setup is a package.json script. `bun install` fetches
+# the pinned Mole (postinstall), so every job has it.
 jobs:
   go:
     runs-on: macos-latest
@@ -34,6 +35,9 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: package.json

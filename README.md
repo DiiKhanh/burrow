@@ -18,7 +18,7 @@ Burrow is not affiliated with Mole or Mole for Mac and uses none of their assets
 You need [Go](https://go.dev/dl/) (the `toolchain` line of `go.mod` fetches the pinned version) and [Bun](https://bun.sh) (the version in `packageManager` of `package.json`).
 
 ```sh
-bun install
+bun install                 # also fetches the pinned Mole into resources/
 bun run dev                 # the app, with live reload
 bun run build               # Burrow.app and a DMG in build/darwin-arm64/
 bun run check               # lint, typecheck and unit tests, Go and TypeScript
@@ -26,6 +26,8 @@ bun run test:integration    # Go integration tests
 bun run test:e2e            # Playwright, against the UI with a fake Go client
 bun run test:smoke          # launches the built app
 ```
+
+Burrow ships its own Mole: `mole.lock` pins the release and the SHA-256 of what Burrow downloads, and `bun run fetch:mole` installs it, failing on any checksum mismatch. The source checksum is that of GitHub's archive of the tag; should GitHub ever regenerate it, the fetch fails safe and the lock needs a reviewed re-pin. `dev`, `build` and the tests fetch it first. To move to another release, run `go run ./tools/fetchmole -update V1.63.0` and review the diff of `mole.lock`; the integration tests must pass in the same PR.
 
 These scripts are the only entry points; CI runs the same ones. The app is built with [MyGo](https://github.com/egoist/mygo): the Go side is in `main.go` and `internal/`, the React frontend in `src/`, and `src/mygo.ts` is generated from the Go services by `bun run generate`.
 

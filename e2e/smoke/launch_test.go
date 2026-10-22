@@ -5,16 +5,24 @@ package smoke
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/DiiKhanh/burrow/internal/mole"
 )
 
-// executable is the binary inside the app that `mygo build` makes on Apple Silicon.
-const executable = "../../build/darwin-arm64/Burrow.app/Contents/MacOS/Burrow"
+const (
+	app = "../../build/darwin-arm64/Burrow.app"
+	// executable is the binary inside the app that `mygo build` makes on Apple Silicon.
+	executable = app + "/Contents/MacOS/Burrow"
+	resources  = app + "/Contents/Resources"
+)
 
 // settle is how long the app must keep running to count as started.
 const settle = 5 * time.Second
@@ -53,4 +61,21 @@ func TestAppLaunches(t *testing.T) {
 		t.Fatalf("stopping the app: %v", err)
 	}
 	<-exited
+}
+
+func TestAppShipsMole(t *testing.T) {
+	bundle, err := mole.Locate(resources)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{{bundle.Mo(), "--version"}, {bundle.Status(), "--json"}} {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, args[0], args[1:]...)
+		cmd.Env = []string{"HOME=" + t.TempDir(), "PATH=/usr/bin:/bin:/usr/sbin:/sbin", "TERM=dumb"}
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Errorf("%s: %v\n%s", strings.Join(args, " "), err, out)
+		}
+	}
 }
