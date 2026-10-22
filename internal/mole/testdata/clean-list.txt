@@ -1,0 +1,37 @@
+# Mole Cleanup Preview - ignored metadata
+
+=== App caches ===
+{HOME}/Library/Caches/hash # café/cache.bin  # 99GB
+
+=== Cloud & Office ===
+{HOME}/Library/Caches/Office/unknown.bin  # size unknown
+
+=== User essentials ===
+{HOME}/Library/Logs/Burrow/session.log  # 1B
+{HOME}/.Trash/old.data  # 1B
+
+=== Application Support ===
+{HOME}/Library/Application Support/example/state.db  # 1B
+
+=== Apple Silicon updates ===
+{HOME}/Library/Caches/com.apple.rosetta.update/update.bin  # 1B
+
+=== Device backups & firmware ===
+{HOME}/Library/iTunes/iPhone Software Updates/device.ipsw  # 1B
+{HOME}/Library/Application Support/MobileSync/Backup/backup.db  # 1B
+{HOME}/Library/iTunes/iPhone Software Updates/covered.ipsw  # 1B, counted under {HOME}/Library/iTunes/iPhone Software Updates/device.ipsw
+
+=== Large files ===
+{HOME}/Downloads/movie.mov  # 1GB
+
+=== Developer tools ===
+/var/tmp/mole-outside-home.cache  # 1GB
+
+=== System ===
+/Library/Caches/system.cache  # 1GB
+
+=== Future Mole section ===
+{HOME}/future.data  # 1B
+
+# Summary
+# Potential cleanup: 100GB

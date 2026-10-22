@@ -3,14 +3,80 @@
 package mole
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"log/slog"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/DiiKhanh/burrow/internal/clean"
+	"github.com/DiiKhanh/burrow/internal/testhome"
 )
+
+func TestIntegrationBundledMoScansTheGeneratedHome(t *testing.T) {
+	home := t.TempDir()
+	if _, err := testhome.Generate(home); err != nil {
+		t.Fatal(err)
+	}
+	var logs bytes.Buffer
+	adapter := NewScanner(bundled(t), home, slog.New(slog.NewTextHandler(&logs, nil)))
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+
+	result, err := adapter.Scan(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := make(map[string]struct {
+		group clean.JunkGroupID
+		bytes int64
+	})
+	for _, group := range result.Groups {
+		for _, item := range group.Items {
+			got[item.Path] = struct {
+				group clean.JunkGroupID
+				bytes int64
+			}{group: group.ID, bytes: item.Bytes}
+		}
+	}
+	want := map[string]struct {
+		group clean.JunkGroupID
+		bytes int64
+	}{
+		filepath.Join(home, "Library/Caches/io.github.diikhanh.burrow"): {
+			group: clean.LogsSavedState,
+			bytes: 4_096,
+		},
+		filepath.Join(home, "Library/Logs/Burrow"): {
+			group: clean.LogsSavedState,
+			bytes: 2_048,
+		},
+		filepath.Join(home, ".Trash/old-download.data"): {
+			group: clean.Trash,
+			bytes: 3_072,
+		},
+		filepath.Join(home, "Library/Developer/Xcode/DerivedData/Burrow"): {
+			group: clean.DeveloperTools,
+			bytes: 5_120,
+		},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("Scan returned %#v, want %#v", got, want)
+	}
+	for path, expected := range want {
+		if got[path] != expected {
+			t.Errorf("Scan item %s = %#v, want %#v", path, got[path], expected)
+		}
+	}
+	if strings.Contains(logs.String(), "unknown Mole section") {
+		t.Fatalf("pinned Mole emitted an unmapped section:\n%s", logs.String())
+	}
+}
 
 // The bundle that `bun run fetch:mole` installed into the project.
 const projectResources = "../../resources"
