@@ -1,0 +1,97 @@
+@import "tailwindcss";
+
+/*
+ * Burrow design tokens. Every color, font size, radius and shadow in
+ * components goes through these; Tailwind's defaults are cleared so a
+ * stray `bg-red-500` or `text-xl` does not exist.
+ */
+@theme {
+  --color-*: initial;
+  --font-*: initial;
+  --text-*: initial;
+  --radius-*: initial;
+  --shadow-*: initial;
+  --tracking-*: initial;
+
+  --font-sans: -apple-system, "SF Pro Text", system-ui, sans-serif;
+  --font-mono: "SF Mono", ui-monospace, Menlo, monospace;
+
+  /* Window gradients, one per tab. */
+  --color-clean-top: #2a3150;
+  --color-clean-bottom: #1b1f31;
+  --color-status-top: #463c22;
+  --color-status-bottom: #2a2620;
+
+  --color-transparent: transparent;
+  --color-ink: #f5f5f7;
+  --color-ink-muted: rgb(235 235 245 / 0.62);
+  --color-ink-faint: rgb(235 235 245 / 0.36);
+  --color-surface: rgb(255 255 255 / 0.05);
+  --color-surface-raised: rgb(255 255 255 / 0.09);
+  --color-surface-sunken: rgb(0 0 0 / 0.22);
+  --color-line: rgb(255 255 255 / 0.08);
+  --color-line-strong: rgb(255 255 255 / 0.16);
+  --color-pill: #f5f5f7;
+  --color-pill-ink: #111114;
+
+  /* Meaning. */
+  --color-size: #9cc9ff;
+  --color-ok: #5bd38a;
+  --color-warn: #f5b94a;
+  --color-danger: #ff6b61;
+
+  /* Status metrics. */
+  --color-cpu: #4fd1c5;
+  --color-mem: #f2b544;
+  --color-net: #7fb2ff;
+  --color-disk: #e6cfa0;
+
+  --text-hero: 3.5rem;
+  --text-hero--line-height: 1;
+  --text-metric: 2.25rem;
+  --text-metric--line-height: 1;
+  --text-button: 0.9375rem;
+  --text-button--line-height: 1.5;
+  --text-tab: 0.8125rem;
+  --text-tab--line-height: 1.5;
+  --text-body: 0.8125rem;
+  --text-body--line-height: 1.25rem;
+  --text-label: 0.6875rem;
+  --text-label--line-height: 1rem;
+
+  --tracking-label: 0.14em;
+
+  --radius-card: 14px;
+  --radius-window: 18px;
+
+  --shadow-pill: 0 8px 30px rgb(0 0 0 / 0.35);
+}
+
+/* Drags the window, as a title bar does; buttons inside stay clickable. */
+@utility drag-region {
+  --app-region: drag;
+}
+
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-clean-bottom);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  cursor: default;
+}

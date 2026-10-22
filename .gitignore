@@ -1,2 +1,13 @@
 # Claude Code agent worktrees
 .claude/worktrees/
+
+# Dependencies and builds
+node_modules/
+/dist/
+/build/
+/.mygo/
+mygo_windows_*.syso
+
+# Test output
+/test-results/
+/playwright-report/

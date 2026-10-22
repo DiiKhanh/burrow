@@ -1,0 +1,18 @@
+version: "2"
+
+run:
+  # Lint the integration and smoke tests too.
+  build-tags:
+    - integration
+    - smoke
+
+linters:
+  enable:
+    - errorlint
+    - misspell
+    - unconvert
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
