@@ -28,6 +28,10 @@ _Avoid_: Entry, file, target
 A named category of junk items (e.g. Browsers, Developer tools) that the user can select as a whole.
 _Avoid_: Section, category
 
+**Device Firmware**:
+A junk group containing downloaded Apple device firmware packages. It does not include device backups.
+_Avoid_: Device Backups & Firmware
+
 **Locked junk group**:
 A junk group that cannot be selected right now because the app that owns it is running.
 _Avoid_: Disabled group, blocked group
