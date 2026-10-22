@@ -9,6 +9,8 @@ import { JUNK_GROUPS, groupBytes } from "../mock/clean";
 import type { CleanFlow, Phase } from "../shared/useCleanFlow";
 import type { StatusState } from "../mock/status";
 import { ProcessTable } from "./A";
+import { ScanVisual, ScanVisualPicker, useScanVisual } from "./CScan";
+import type { JunkGroup } from "../mock/clean";
 
 export const name = "Guided: stepper + storage bar";
 
@@ -49,6 +51,7 @@ function Stepper({ phase }: { phase: Phase }) {
 
 function CleanGuided({ flow }: { flow: CleanFlow }) {
   const reviewing = flow.phase === "found" || flow.phase === "review";
+  const [scanVisual, setScanVisual] = useScanVisual();
   return (
     <main className="mx-auto flex min-h-0 w-full max-w-[680px] flex-1 flex-col items-center gap-6 px-6 pt-8 pb-16">
       <Stepper phase={flow.phase} />
@@ -59,17 +62,8 @@ function CleanGuided({ flow }: { flow: CleanFlow }) {
           <PillButton onClick={flow.startScan}>Start scan</PillButton>
         </div>
       )}
-      {flow.phase === "scanning" && (
-        <div className="flex w-full flex-1 flex-col justify-center gap-3">
-          <div className="flex items-baseline justify-between">
-            <h1 className="text-2xl font-bold">{flow.scanSection}</h1>
-            <span className="tabular font-mono text-ink-muted">{Math.round(flow.scanPct * 100)}%</span>
-          </div>
-          <MeterBar value={flow.scanPct} color="var(--color-size)" />
-          <p className="truncate font-mono text-xs text-ink-faint">{flow.scanPath}</p>
-          <button onClick={flow.cancelScan} className="self-start text-sm text-size">Cancel</button>
-        </div>
-      )}
+      {flow.phase === "scanning" && <ScanVisual which={scanVisual} flow={flow} />}
+      {(flow.phase === "idle" || flow.phase === "scanning") && <ScanVisualPicker current={scanVisual} onChange={setScanVisual} />}
       {reviewing && <Review flow={flow} />}
       {(flow.phase === "cleaning" || flow.phase === "done") && <Progress flow={flow} />}
     </main>
@@ -92,15 +86,7 @@ function Review({ flow }: { flow: CleanFlow }) {
       </div>
       <ul className="w-full flex-1 divide-y divide-line overflow-y-auto rounded-card border border-line bg-surface">
         {JUNK_GROUPS.map((g, i) => (
-          <li key={g.id} onMouseEnter={() => setFocus(g.id)} onMouseLeave={() => setFocus(null)} className={`flex items-center gap-3 px-4 py-3 ${focus === g.id ? "bg-surface-raised" : ""}`}>
-            <TriCheckbox label={g.name} value={flow.groupSelection(g)} locked={!!g.lockedReason} onChange={(on) => flow.setGroup(g, on)} />
-            <span className="size-2 rounded-full" style={{ background: GROUP_COLORS[i % GROUP_COLORS.length] }} />
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium">{g.name}</p>
-              <p className={`truncate text-xs ${g.lockedReason ? "text-warn" : "text-ink-faint"}`}>{g.lockedReason ?? g.description}</p>
-            </div>
-            <span className="tabular font-mono text-sm text-size">{formatBytes(groupBytes(g))}</span>
-          </li>
+          <GroupRow key={g.id} g={g} color={GROUP_COLORS[i % GROUP_COLORS.length]} flow={flow} focused={focus === g.id} onFocus={setFocus} />
         ))}
       </ul>
       <div className="flex w-full items-center justify-between">
@@ -108,6 +94,40 @@ function Review({ flow }: { flow: CleanFlow }) {
         <PillButton onClick={flow.startClean}>Clean {flow.selectedCount} items →</PillButton>
       </div>
     </>
+  );
+}
+
+type GroupRowProps = { g: JunkGroup; color: string; flow: CleanFlow; focused: boolean; onFocus: (id: string | null) => void };
+
+function GroupRow({ g, color, flow, focused, onFocus }: GroupRowProps) {
+  const [open, setOpen] = useState(false);
+  const n = g.items.filter((i) => flow.selected.has(i.id)).length;
+  return (
+    <li onMouseEnter={() => onFocus(g.id)} onMouseLeave={() => onFocus(null)} className={focused ? "bg-surface-raised" : ""}>
+      <div role="button" aria-expanded={open} onClick={() => setOpen((o) => !o)} className="flex cursor-default items-center gap-3 px-4 py-3">
+        <TriCheckbox label={g.name} value={flow.groupSelection(g)} locked={!!g.lockedReason} onChange={(on) => flow.setGroup(g, on)} />
+        <span className="size-2 rounded-full" style={{ background: color }} />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium">
+            {g.name} <span className="tabular ml-1 font-mono text-xs text-ink-faint">{n}/{g.items.length}</span>
+          </p>
+          <p className={`truncate text-xs ${g.lockedReason ? "text-warn" : "text-ink-faint"}`}>{g.lockedReason ?? g.description}</p>
+        </div>
+        <span className="tabular font-mono text-sm text-size">{formatBytes(groupBytes(g))}</span>
+        <span className={`text-ink-faint transition-transform ${open ? "rotate-90" : ""}`}>›</span>
+      </div>
+      {open && (
+        <ul className="pb-2">
+          {g.items.map((i) => (
+            <li key={i.id} className="flex items-center gap-3 py-1 pr-10 pl-12 text-xs">
+              <input type="checkbox" disabled={!!g.lockedReason} checked={flow.selected.has(i.id)} onChange={() => flow.toggleItem(g, i)} className="accent-pill" />
+              <span className="flex-1 truncate font-mono text-ink-muted">{i.path}</span>
+              <span className="tabular font-mono text-ink-faint">{formatBytes(i.bytes)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </li>
   );
 }
 
