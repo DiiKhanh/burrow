@@ -6,8 +6,11 @@ Throwaway. Answers [Prototype giao diện Clean và Status theo Mole for Mac](ht
 cd prototypes/ui && npm install && npm run dev
 ```
 
-Switch variants with `?variant=A|B|C` (or ← → keys / the pink bar), tabs with `?tab=clean|status` (or ⌘1 / ⌘2). All data is mock and in memory; nothing touches the disk.
+Switch variants with `?variant=A|B|C|D` (D is the default) (or ← → keys / the pink bar), tabs with `?tab=clean|status` (or ⌘1 / ⌘2). All data is mock and in memory; nothing touches the disk.
 
 - **A, Faithful**: Mole for Mac's structure. Hero rings + big number, full-window review overlay with group cards, rolling cleaning list; Status as 4x2 bento + process table.
 - **B, Workspace**: no hero, no overlay. Persistent two-pane layout: group rail with Clean button on the left, item table of the selected group on the right; Status as a vitals column + full-height process table.
 - **C, Guided**: one narrow column with a Scan → Review → Clean → Done stepper and a storage bar of the selection; Status focuses on one large chart chosen by metric chips.
+- **D, Chosen**: the user's pick. Clean from C, with the Strata visual for both scan and clean (one layer per section / junk group); Status bento from A.
+
+Variant C also has `?scan=1|2|3` (Rings / Ledger / Strata) for comparing scan screens.

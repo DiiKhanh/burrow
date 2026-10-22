@@ -20,7 +20,7 @@ export function PrototypeSwitcher({ variants, current, onChange, state }: Props)
 
   if (import.meta.env.PROD) return null;
   return (
-    <div className="fixed bottom-3 left-1/2 z-[100] flex -translate-x-1/2 items-center gap-3 rounded-full bg-[#ff2d78] px-2 py-1.5 font-mono text-xs text-white shadow-2xl">
+    <div className="fixed bottom-3 left-1/2 z-[100] flex -translate-x-1/2 items-center gap-3 whitespace-nowrap rounded-full bg-[#ff2d78] px-2 py-1.5 font-mono text-xs text-white shadow-2xl">
       <button onClick={() => go(-1)} className="rounded-full px-2 hover:bg-white/20">←</button>
       <span className="font-bold">
         {variants[idx].key} ({variants[idx].name})

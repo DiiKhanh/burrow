@@ -196,10 +196,10 @@ function GroupCard({ g, flow }: { g: JunkGroup; flow: CleanFlow }) {
 
 function Card({ label, icon, color, badge, children, foot, className = "" }: { label: string; icon: string; color: string; badge?: string; children: React.ReactNode; foot?: string; className?: string }) {
   return (
-    <section className={`flex flex-col gap-3 rounded-card border border-line bg-surface p-4 ${className}`}>
-      <div className="flex items-center justify-between">
-        <Label className="flex items-center gap-1.5"><span style={{ color }}>{icon}</span>{label}</Label>
-        {badge && <span className="tabular rounded-full bg-surface-raised px-2 py-0.5 font-mono text-[11px] text-ink-muted">{badge}</span>}
+    <section className={`flex min-w-0 flex-col gap-3 rounded-card border border-line bg-surface p-4 ${className}`}>
+      <div className="flex items-center justify-between gap-2">
+        <Label className="flex shrink-0 items-center gap-1.5"><span style={{ color }}>{icon}</span>{label}</Label>
+        {badge && <span className="tabular truncate rounded-full bg-surface-raised px-2 py-0.5 font-mono text-[11px] text-ink-muted">{badge}</span>}
       </div>
       <div className="flex flex-1 flex-col justify-between gap-2">{children}</div>
       {foot && <p className="tabular truncate text-xs text-ink-faint">{foot}</p>}
@@ -215,12 +215,12 @@ function Metric({ value, unit }: { value: string | number; unit: string }) {
   );
 }
 
-function StatusBento({ s }: { s: StatusState }) {
+export function StatusBento({ s }: { s: StatusState }) {
   const cpu = Math.round(s.cpu.at(-1)!);
   const [down, downU] = splitBytes(s.netDown.at(-1)!);
   return (
-    <main className="flex min-h-0 flex-1 flex-col gap-3 px-8 pt-8 pb-16">
-      <div className="grid grid-cols-[1.5fr_1fr_1fr_1fr] grid-rows-[178px_178px] gap-3">
+    <main className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-8 pt-8 pb-16">
+      <div className="grid shrink-0 grid-cols-[minmax(0,1.5fr)_repeat(3,minmax(0,1fr))] grid-rows-[178px_178px] gap-3">
         <Card label="Health" icon="◉" color="var(--color-ok)" badge={`${s.chip} · ${s.ramTotal}`} foot={s.uptime}>
           <div className="flex items-end justify-between">
             <div>
@@ -264,7 +264,7 @@ function StatusBento({ s }: { s: StatusState }) {
           <Metric value={s.fanRpm} unit="RPM" />
         </Card>
       </div>
-      <ProcessTable s={s} />
+      <ProcessTable s={s} className="min-h-[220px]" />
     </main>
   );
 }

@@ -2,7 +2,7 @@
 import { useState } from "react";
 import type { CleanFlow } from "../shared/useCleanFlow";
 import { BurrowRings } from "../shared/Burrow";
-import { SCAN_SECTIONS, TOTAL_BYTES } from "../mock/clean";
+import { JUNK_GROUPS, SCAN_SECTIONS, TOTAL_BYTES } from "../mock/clean";
 import { formatBytes, splitBytes } from "../mock/format";
 
 // Share of the total junk each section contributes (mock), in SCAN_SECTIONS order.
@@ -22,7 +22,7 @@ export const SCAN_VISUALS = [
   { key: "2", name: "Ledger" },
   { key: "3", name: "Strata" },
 ] as const;
-type ScanKey = (typeof SCAN_VISUALS)[number]["key"];
+export type ScanKey = (typeof SCAN_VISUALS)[number]["key"];
 
 export function useScanVisual() {
   const initial = new URLSearchParams(location.search).get("scan");
@@ -149,6 +149,71 @@ function Strata({ flow, tally }: { flow: CleanFlow; tally: ReturnType<typeof sca
         })}
       </div>
       <p className="truncate font-mono text-xs text-ink-faint">{flow.scanPath}</p>
+    </div>
+  );
+}
+
+/** Strata for the clean step: one layer per selected junk group, emptied top to bottom. */
+export function CleanStrata({ flow }: { flow: CleanFlow }) {
+  const done = flow.phase === "done";
+  const activeGroupId = flow.queue[flow.cleaned.length]?.group.id;
+  const layers = JUNK_GROUPS.map((g) => {
+    const queued = flow.queue.filter((q) => q.group.id === g.id);
+    const results = flow.cleaned.filter((c) => c.group.id === g.id);
+    return {
+      g,
+      queuedCount: queued.length,
+      queuedBytes: queued.reduce((s, q) => s + q.item.bytes, 0),
+      processed: results.length,
+      freed: results.filter((c) => c.outcome === "done").reduce((s, c) => s + c.item.bytes, 0),
+      skipped: results.filter((c) => c.outcome === "skipped"),
+    };
+  }).filter((l) => l.queuedCount > 0);
+  const [v, u] = splitBytes(flow.freedBytes);
+  const skipped = flow.cleaned.filter((c) => c.outcome === "skipped");
+
+  return (
+    <div className="flex w-full flex-col gap-4">
+      <p className="tabular text-4xl font-bold">
+        {v} <span className="text-xl text-ink-muted">{u} {done ? "freed" : "freed so far"}</span>
+      </p>
+      <div className="overflow-hidden rounded-card border border-line">
+        {layers.map((l, i) => {
+          const state = l.processed === l.queuedCount ? "done" : l.g.id === activeGroupId ? "active" : "pending";
+          return (
+            <div
+              key={l.g.id}
+              className="relative flex h-9 items-center justify-between px-4 text-sm transition-colors duration-500"
+              style={{
+                background:
+                  state === "pending"
+                    ? `rgb(0 0 0 / ${0.16 + i * 0.03})`
+                    : state === "active"
+                      ? "color-mix(in oklab, var(--color-ok) 18%, transparent)"
+                      : `color-mix(in oklab, var(--color-disk) ${8 + i * 2}%, transparent)`,
+              }}
+            >
+              {state === "active" && (
+                <span className="absolute inset-y-0 left-0 bg-ok/20 transition-[width] duration-300" style={{ width: `${(l.processed / l.queuedCount) * 100}%` }} />
+              )}
+              <span className={`relative flex items-center gap-2 ${state === "pending" ? "text-ink-faint" : "text-ink"}`}>
+                <span className={`w-3 text-xs ${state === "done" ? "text-ok" : ""}`}>{state === "done" ? "✓" : state === "active" ? "•" : ""}</span>
+                {l.g.name}
+                {l.skipped.length > 0 && <span className="text-xs text-warn">{l.skipped.length} skipped</span>}
+              </span>
+              <span className="tabular relative font-mono text-xs">
+                <span className="text-size">{formatBytes(l.freed)}</span>
+                <span className="text-ink-faint"> / {formatBytes(l.queuedBytes)}</span>
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      <p className="truncate font-mono text-xs text-ink-faint">
+        {done
+          ? `${flow.cleaned.length - skipped.length} removed · ${skipped.length} skipped${skipped.length ? `: ${skipped.map((s) => s.item.path).join(", ")} (in use)` : ""}`
+          : flow.queue[flow.cleaned.length]?.item.path}
+      </p>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-// PROTOTYPE entry: three Burrow UI variants, switchable via ?variant= (A/B/C) and ?tab= (clean/status).
+// PROTOTYPE entry: Burrow UI variants, switchable via ?variant= (A/B/C, D = chosen mix) and ?tab= (clean/status).
 import { StrictMode, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
@@ -10,11 +10,13 @@ import type { Tab } from "./shared/Shell";
 import * as A from "./variants/A";
 import * as B from "./variants/B";
 import * as C from "./variants/C";
+import * as D from "./variants/D";
 
 const VARIANTS = {
   A: { name: A.name, View: A.VariantA },
   B: { name: B.name, View: B.VariantB },
   C: { name: C.name, View: C.VariantC },
+  D: { name: D.name, View: D.VariantD },
 } as const;
 type Key = keyof typeof VARIANTS;
 
@@ -28,7 +30,7 @@ function writeParams(variant: string, tab: string) {
 }
 
 function App() {
-  const [variant, setVariant] = useState<Key>(() => readParam("variant", ["A", "B", "C"] as const, "A"));
+  const [variant, setVariant] = useState<Key>(() => readParam("variant", ["A", "B", "C", "D"] as const, "D"));
   const [tab, setTabState] = useState<Tab>(() => readParam("tab", ["clean", "status"] as const, "clean"));
   const flow = useCleanFlow();
   const status = useStatus();

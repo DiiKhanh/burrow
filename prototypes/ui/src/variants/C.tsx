@@ -9,7 +9,7 @@ import { JUNK_GROUPS, groupBytes } from "../mock/clean";
 import type { CleanFlow, Phase } from "../shared/useCleanFlow";
 import type { StatusState } from "../mock/status";
 import { ProcessTable } from "./A";
-import { ScanVisual, ScanVisualPicker, useScanVisual } from "./CScan";
+import { CleanStrata, ScanVisual, ScanVisualPicker, useScanVisual, type ScanKey } from "./CScan";
 import type { JunkGroup } from "../mock/clean";
 
 export const name = "Guided: stepper + storage bar";
@@ -49,9 +49,12 @@ function Stepper({ phase }: { phase: Phase }) {
   );
 }
 
-function CleanGuided({ flow }: { flow: CleanFlow }) {
+type CleanGuidedProps = { flow: CleanFlow; fixedScan?: ScanKey; strataClean?: boolean };
+
+export function CleanGuided({ flow, fixedScan, strataClean }: CleanGuidedProps) {
   const reviewing = flow.phase === "found" || flow.phase === "review";
-  const [scanVisual, setScanVisual] = useScanVisual();
+  const [pickedScan, setScanVisual] = useScanVisual();
+  const scanVisual = fixedScan ?? pickedScan;
   return (
     <main className="mx-auto flex min-h-0 w-full max-w-[680px] flex-1 flex-col items-center gap-6 px-6 pt-8 pb-16">
       <Stepper phase={flow.phase} />
@@ -63,9 +66,9 @@ function CleanGuided({ flow }: { flow: CleanFlow }) {
         </div>
       )}
       {flow.phase === "scanning" && <ScanVisual which={scanVisual} flow={flow} />}
-      {(flow.phase === "idle" || flow.phase === "scanning") && <ScanVisualPicker current={scanVisual} onChange={setScanVisual} />}
+      {!fixedScan && (flow.phase === "idle" || flow.phase === "scanning") && <ScanVisualPicker current={scanVisual} onChange={setScanVisual} />}
       {reviewing && <Review flow={flow} />}
-      {(flow.phase === "cleaning" || flow.phase === "done") && <Progress flow={flow} />}
+      {(flow.phase === "cleaning" || flow.phase === "done") && (strataClean ? <StrataDone flow={flow} /> : <Progress flow={flow} />)}
     </main>
   );
 }
@@ -128,6 +131,15 @@ function GroupRow({ g, color, flow, focused, onFocus }: GroupRowProps) {
         </ul>
       )}
     </li>
+  );
+}
+
+function StrataDone({ flow }: { flow: CleanFlow }) {
+  return (
+    <div className="flex w-full flex-1 flex-col items-center justify-center gap-6">
+      <CleanStrata flow={flow} />
+      {flow.phase === "done" && <PillButton variant="outline" onClick={flow.reset}>Finish</PillButton>}
+    </div>
   );
 }
 

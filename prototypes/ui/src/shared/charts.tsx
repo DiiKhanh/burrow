@@ -12,7 +12,7 @@ export function Sparkline({ data, max = Math.max(...data, 1), color, height = 40
   const w = 240;
   const d = points(data, max, w, height).map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`).join("");
   return (
-    <svg viewBox={`0 0 ${w} ${height}`} preserveAspectRatio="none" className={className} style={{ height }}>
+    <svg viewBox={`0 0 ${w} ${height}`} preserveAspectRatio="none" className={`block min-w-0 ${className ?? ""}`} style={{ height }}>
       <path d={d} fill="none" stroke={color} strokeWidth="1.5" vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
     </svg>
   );
@@ -24,7 +24,7 @@ export function AreaSpark({ data, max = Math.max(...data, 1), color, height = 40
   const pts = points(data, max, w, height);
   const line = pts.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`).join("");
   return (
-    <svg viewBox={`0 0 ${w} ${height}`} preserveAspectRatio="none" className={className} style={{ height }}>
+    <svg viewBox={`0 0 ${w} ${height}`} preserveAspectRatio="none" className={`block min-w-0 ${className ?? ""}`} style={{ height }}>
       <defs>
         <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor={color} stopOpacity="0.35" />
@@ -42,7 +42,7 @@ export function BarSpark({ data, max = 100, color, height = 40, className }: Spa
   const gap = 1.5;
   const bw = w / data.length - gap;
   return (
-    <svg viewBox={`0 0 ${w} ${height}`} preserveAspectRatio="none" className={className} style={{ height }}>
+    <svg viewBox={`0 0 ${w} ${height}`} preserveAspectRatio="none" className={`block min-w-0 ${className ?? ""}`} style={{ height }}>
       {data.map((v, i) => {
         const h = Math.max(1.5, (Math.min(v, max) / max) * height);
         return <rect key={i} x={i * (bw + gap)} y={height - h} width={bw} height={h} rx="1" fill={color} opacity={0.35 + 0.65 * (i / data.length)} />;
