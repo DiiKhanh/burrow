@@ -47,3 +47,7 @@ _Avoid_: Failed item, error
 **Status**:
 The feature that shows live system health of the Mac.
 _Avoid_: Dashboard, monitor
+
+**Health score**:
+A 0-100 summary of the Mac's current condition, with a one-line reason, as computed by Mole.
+_Avoid_: Health, rating, grade
