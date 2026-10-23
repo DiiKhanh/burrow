@@ -1,6 +1,6 @@
 import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { ScanResult } from "../mygo";
 import { fakeGo } from "../testing/mygo.fake";
 import { CleanTab } from "./CleanTab";
@@ -79,6 +79,7 @@ describe("Clean Scan", () => {
           },
         ],
         unreadable: [],
+        locked: [],
       });
       await Promise.resolve();
     });
@@ -381,7 +382,95 @@ const REVIEW_RESULT: ScanResult = {
     },
   ],
   unreadable: [],
+  locked: [],
 };
+
+describe("Clean Review with a locked junk group", () => {
+  const BROWSERS: ScanResult = {
+    groups: [
+      {
+        id: "app-caches",
+        removalMethod: "delete",
+        defaultSelected: true,
+        items: [{ id: "cache", path: "/Users/test/Library/Caches/Burrow", bytes: 1_000_000_000 }],
+      },
+      {
+        id: "browsers",
+        removalMethod: "delete",
+        defaultSelected: true,
+        items: [
+          { id: "chrome", path: "/Users/test/Library/Caches/Google/Chrome", bytes: 500_000_000 },
+          { id: "safari", path: "/Users/test/Library/Caches/com.apple.Safari", bytes: 250_000_000 },
+        ],
+      },
+    ],
+    unreadable: [],
+    locked: [{ id: "browsers", apps: ["Safari"] }],
+  };
+
+  it("locks the group with the app to quit and leaves it out of Clean", async () => {
+    const { user } = await review(BROWSERS);
+    const browsers = screen.getByRole("checkbox", { name: "Browsers" });
+
+    expect(screen.getByText("Safari is open. Quit it to clean.")).toBeVisible();
+    expect(browsers).toBeDisabled();
+    expect(browsers).not.toBeChecked();
+    expect(screen.getByText(wholeText("1 GB selected"))).toBeVisible();
+
+    await user.click(browsers);
+    await user.click(screen.getByRole("button", { name: "Browsers items" }));
+    expect(screen.getByRole("checkbox", { name: "/Users/test/Library/Caches/com.apple.Safari" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Clean 1 item →" }));
+    expect(fakeGo.clean.last.ids).toEqual(["cache"]);
+  });
+
+  it("names every running browser", async () => {
+    await review({ ...BROWSERS, locked: [{ id: "browsers", apps: ["Google Chrome", "Safari", "Arc"] }] });
+
+    expect(screen.getByText("Google Chrome, Safari, and Arc are open. Quit them to clean.")).toBeVisible();
+  });
+
+  it("unlocks the group, back to its selection, once the browser quits", async () => {
+    await review(BROWSERS);
+
+    await act(async () => {
+      fakeGo.locked.last.resolve([]);
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByText("Safari is open. Quit it to clean.")).not.toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Browsers" })).toBeEnabled();
+    expect(screen.getByRole("checkbox", { name: "Browsers" })).toBeChecked();
+    expect(screen.getByText(wholeText("1.75 GB selected"))).toBeVisible();
+    expect(screen.getByRole("button", { name: "Clean 3 items →" })).toBeEnabled();
+    expect(fakeGo.scan.calls).toHaveLength(1);
+  });
+
+  it("locks the group when a browser starts during Review", async () => {
+    await review({ ...BROWSERS, locked: [] });
+
+    await act(async () => {
+      fakeGo.locked.last.resolve([{ id: "browsers", apps: ["Firefox", "Arc"] }]);
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText("Firefox and Arc are open. Quit them to clean.")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Clean 1 item →" })).toBeEnabled();
+  });
+
+  it("keeps asking while Review is open, and keeps the lock when asking fails", async () => {
+    await review(BROWSERS);
+    expect(fakeGo.locked.calls).toHaveLength(1);
+
+    await act(async () => {
+      fakeGo.locked.last.reject(new Error("sysctl refused"));
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText("Safari is open. Quit it to clean.")).toBeVisible();
+    await vi.waitFor(() => expect(fakeGo.locked.calls).toHaveLength(2), { timeout: 2_000 });
+  });
+});
 
 /** The color bar's segments as [label, width in percent], left to right. */
 function barSegments() {
@@ -402,6 +491,7 @@ describe("Clean Review with protected access unavailable", () => {
       },
     ],
     unreadable: ["app-caches", "trash"],
+    locked: [],
   };
 
   it("marks unreadable junk groups and still offers the readable items", async () => {

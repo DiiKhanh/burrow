@@ -36,10 +36,11 @@ func main() {
 			log.Fatalf("finding the user's home: %v", err)
 		}
 		configureClean(clean.NewEngine(clean.Options{
-			Scanner: mole.NewScanner(bundle, home, slog.Default()),
-			Home:    home,
-			Remover: clean.OSRemover{},
-			Logger:  slog.Default(),
+			Scanner:   mole.NewScanner(bundle, home, slog.Default()),
+			Home:      home,
+			Remover:   clean.OSRemover{},
+			Processes: clean.OSProcesses{},
+			Logger:    slog.Default(),
 		}))
 		win := mygo.NewWindow(mygo.WindowOptions{
 			Title:           "Burrow",

@@ -15,8 +15,10 @@ import {
   selectedIn,
   setGroup,
   toggleItem,
+  withoutLocked,
 } from "./selection";
 import { TriCheckbox } from "./TriCheckbox";
+import { useLockedGroups } from "./useLockedGroups";
 
 type Props = {
   result: ScanResult;
@@ -42,7 +44,10 @@ function reviewRows(result: ScanResult): ReviewRow[] {
 export function Review({ result, onScanAgain, onClean }: Props) {
   const [selection, setSelection] = useState<Selection>(() => defaultSelection(result));
   const [hovered, setHovered] = useState<JunkGroupID | null>(null);
-  const shares = result.groups.map((group) => ({ id: group.id, bytes: selectedBytes(group, selection) }));
+  const locked = useLockedGroups(result.locked);
+  // What Clean takes; selection keeps a locked group's items for when it unlocks.
+  const cleanable = withoutLocked(selection, result.groups, new Set(locked.keys()));
+  const shares = result.groups.map((group) => ({ id: group.id, bytes: selectedBytes(group, cleanable) }));
   const total = shares.reduce((sum, share) => sum + share.bytes, 0);
   const { value, unit } = bytesParts(total);
 
@@ -64,7 +69,8 @@ export function Review({ result, onScanAgain, onClean }: Props) {
               key={id}
               group={group}
               unreadable={unreadable}
-              selection={selection}
+              lockedBy={locked.get(id) ?? null}
+              selection={cleanable}
               hovered={hovered === id}
               onHover={setHovered}
               onSelectGroup={(on) => setSelection((current) => setGroup(current, group, on))}
@@ -80,8 +86,8 @@ export function Review({ result, onScanAgain, onClean }: Props) {
         <button type="button" onClick={onScanAgain} className="text-ink-muted text-note hover:text-ink">
           {strings.clean.review.scanAgain}
         </button>
-        <PillButton disabled={selection.size === 0} onClick={() => onClean([...selection])}>
-          {strings.clean.review.clean(selection.size)}
+        <PillButton disabled={cleanable.size === 0} onClick={() => onClean([...cleanable])}>
+          {strings.clean.review.clean(cleanable.size)}
         </PillButton>
       </div>
     </>
@@ -115,6 +121,8 @@ function UnreadableLabel() {
 type GroupRowProps = {
   group: JunkGroup;
   unreadable: boolean;
+  /** The running apps that lock the group, or null while it is unlocked. */
+  lockedBy: readonly string[] | null;
   selection: Selection;
   hovered: boolean;
   onHover: (id: JunkGroupID | null) => void;
@@ -122,9 +130,19 @@ type GroupRowProps = {
   onToggleItem: (itemId: string) => void;
 };
 
-function GroupRow({ group, unreadable, selection, hovered, onHover, onSelectGroup, onToggleItem }: GroupRowProps) {
+function GroupRow({
+  group,
+  unreadable,
+  lockedBy,
+  selection,
+  hovered,
+  onHover,
+  onSelectGroup,
+  onToggleItem,
+}: GroupRowProps) {
   const [open, setOpen] = useState(false);
   const { name, description, dot } = junkGroupCatalog[group.id];
+  const locked = lockedBy !== null;
   return (
     <li
       onMouseEnter={() => onHover(group.id)}
@@ -134,7 +152,7 @@ function GroupRow({ group, unreadable, selection, hovered, onHover, onSelectGrou
       {/* The expand button stretches over the whole row; the checkbox sits above it. */}
       <div className="relative flex items-center gap-3 px-4 py-3">
         <span className="relative z-10 flex">
-          <TriCheckbox label={name} state={groupState(group, selection)} onChange={onSelectGroup} />
+          <TriCheckbox label={name} state={groupState(group, selection)} onChange={onSelectGroup} disabled={locked} />
         </span>
         <button
           type="button"
@@ -143,9 +161,9 @@ function GroupRow({ group, unreadable, selection, hovered, onHover, onSelectGrou
           onClick={() => setOpen((current) => !current)}
           className="flex min-w-0 flex-1 items-center gap-3 text-left after:absolute after:inset-0"
         >
-          <span aria-hidden="true" className={`size-2 shrink-0 rounded-full ${dot}`} />
+          <span aria-hidden="true" className={`size-2 shrink-0 rounded-full ${dot} ${locked ? "opacity-40" : ""}`} />
           <span className="min-w-0 flex-1">
-            <span className="block font-medium text-note">
+            <span className={`block font-medium text-note ${locked ? "text-ink-muted" : ""}`}>
               {name}{" "}
               <span className="tabular ml-1 font-mono text-caption text-ink-faint">
                 {strings.clean.review.count(selectedIn(group, selection).length, group.items.length)}
@@ -157,7 +175,11 @@ function GroupRow({ group, unreadable, selection, hovered, onHover, onSelectGrou
               )}
               {unreadable && <UnreadableLabel />}
             </span>
-            <span className="block truncate text-caption text-ink-faint">{description}</span>
+            {lockedBy ? (
+              <span className="block truncate text-caption text-warn">{strings.clean.review.locked(lockedBy)}</span>
+            ) : (
+              <span className="block truncate text-caption text-ink-faint">{description}</span>
+            )}
           </span>
           <span className="tabular font-mono text-note text-size">{formatBytes(groupBytes(group))}</span>
           <span
@@ -176,8 +198,9 @@ function GroupRow({ group, unreadable, selection, hovered, onHover, onSelectGrou
                 type="checkbox"
                 aria-label={item.path}
                 checked={selection.has(item.id)}
+                disabled={locked}
                 onChange={() => onToggleItem(item.id)}
-                className="accent-pill"
+                className="accent-pill disabled:opacity-40"
               />
               <span className="flex-1 truncate font-mono text-ink-muted">{item.path}</span>
               <span className="tabular font-mono text-ink-faint">{formatBytes(item.bytes)}</span>

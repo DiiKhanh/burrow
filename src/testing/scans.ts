@@ -55,6 +55,7 @@ export const fullScan: ScanResult = {
     ]),
   ],
   unreadable: [],
+  locked: [],
 };
 
 /** A path deep enough to overflow any row. */
@@ -73,10 +74,12 @@ export const longScan: ScanResult = {
     ...fullScan.groups.slice(1),
   ],
   unreadable: [],
+  locked: [],
 };
 
 /** A Scan without Full Disk Access: macOS kept it out of Trash. */
 export const unreadableScan: ScanResult = {
   groups: fullScan.groups.filter((junk) => junk.id !== "trash"),
   unreadable: ["trash"],
+  locked: [],
 };

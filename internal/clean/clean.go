@@ -93,17 +93,24 @@ func (e *Engine) run(ctx context.Context, realHome string, unknown []string, gro
 }
 
 // cleanGroup removes the selected items of one group into report, sending
-// progress before the first item and after each one.
+// progress before the first item and after each one. A group locked as it
+// starts is skipped whole, item by item, as in use.
 func (e *Engine) cleanGroup(ctx context.Context, realHome string, group JunkGroup, report *CleanReport, onProgress func(CleanProgress) error) error {
 	progress := CleanProgress{GroupID: group.ID, Selected: len(group.Items), FreedBytes: report.FreedBytes}
 	if err := sendCleanProgress(onProgress, progress); err != nil {
 		return err
 	}
+	locked := e.isLocked(group.ID)
 	for _, item := range group.Items {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		cleaned := e.remove(realHome, group.RemovalMethod, item)
+		var cleaned CleanedItem
+		if locked {
+			cleaned = CleanedItem{ID: item.ID, Path: item.Path, Bytes: item.Bytes, Method: ptr(group.RemovalMethod), SkipReason: ptr(InUse)}
+		} else {
+			cleaned = e.remove(realHome, group.RemovalMethod, item)
+		}
 		report.Items = append(report.Items, cleaned)
 		if cleaned.SkipReason == nil {
 			report.FreedBytes += item.Bytes

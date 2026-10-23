@@ -128,6 +128,15 @@ export interface JunkItem {
   bytes: number;
 }
 
+/**
+ * LockedGroup is a locked junk group: Apps, the apps that own it, are
+ * running, so nothing in it can be cleaned until they quit.
+ */
+export interface LockedGroup {
+  id: JunkGroupID;
+  apps: string[];
+}
+
 /** Memory is physical and swap memory usage. */
 export interface Memory {
   used: number | null;
@@ -185,10 +194,13 @@ export interface ScanProgress {
  * ScanResult is the complete preview returned by Scan. Unreadable lists, in
  * group order, the junk groups macOS privacy protection kept the Scan from
  * reading in full: their items may be missing, or the group missing entirely.
+ * Locked lists the junk groups locked as the Scan ended; they may unlock
+ * later, without a new Scan.
  */
 export interface ScanResult {
   groups: JunkGroup[];
   unreadable: JunkGroupID[];
+  locked: LockedGroup[];
 }
 
 /**
@@ -243,7 +255,10 @@ export interface Thermal {
 
 // ---- Services ----
 
-/** Clean is the bound service behind the Clean tab: Scan and Clean. */
+/**
+ * Clean is the bound service behind the Clean tab: Scan, Clean, and the
+ * locked junk groups.
+ */
 export const Clean = {
   /**
    * Clean removes the selected junk items of the latest Scan, by id, streaming
@@ -251,6 +266,13 @@ export const Clean = {
    */
   clean(ids: string[], updates: Channel<CleanProgress>): Promise<CleanReport> {
     return call("Clean.Clean", ids, updates);
+  },
+  /**
+   * Locked lists the junk groups locked right now, so Review unlocks a group
+   * once its apps quit, without a new Scan.
+   */
+  locked(): Promise<LockedGroup[]> {
+    return call("Clean.Locked");
   },
   /**
    * Scan streams progress through updates and returns the complete preview.
