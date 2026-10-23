@@ -6,7 +6,6 @@ import {
   type CleanProgress,
   type CleanReport,
   type JunkGroupID,
-  Privacy,
   type ScanProgress,
   type ScanResult,
 } from "../mygo";
@@ -14,41 +13,31 @@ import { PillButton } from "../shell/PillButton";
 import { strings } from "../strings";
 import { CleaningView, DoneView } from "./CleanRun";
 import type { CleanLayer } from "./CleanStrata";
-import type { OpenFullDiskAccess } from "./FullDiskAccessNotice";
 import { Review } from "./Review";
 import { ScanStrata } from "./ScanStrata";
 
-export type ScanSession = { result: Promise<ScanResult>; cancel: () => void };
-export type StartScan = (onProgress: (progress: ScanProgress) => void) => ScanSession;
+type ScanSession = { result: Promise<ScanResult>; cancel: () => void };
 
-const startRealScan: StartScan = (onProgress) => {
+/** Starts a Scan; cancel closes its channel, which stops it in Go. */
+function startScan(onProgress: (progress: ScanProgress) => void): ScanSession {
   const updates = new Channel<ScanProgress>(onProgress);
   return { result: Clean.scan(updates), cancel: () => updates.close() };
-};
+}
 
-export type StartClean = (
-  ids: readonly string[],
-  onProgress: (progress: CleanProgress) => void,
-) => Promise<CleanReport>;
-
-const startRealClean: StartClean = (ids, onProgress) => Clean.clean([...ids], new Channel<CleanProgress>(onProgress));
+function startClean(ids: readonly string[], onProgress: (progress: CleanProgress) => void): Promise<CleanReport> {
+  return Clean.clean([...ids], new Channel<CleanProgress>(onProgress));
+}
 
 type Phase = "idle" | "scanning" | "review" | "cleaning" | "done";
 
-type Props = { startScan?: StartScan; startClean?: StartClean; openFullDiskAccess?: OpenFullDiskAccess };
-
 /** The Clean tab: Scan, Review, Clean and Done. */
-export function CleanTab({
-  startScan = startRealScan,
-  startClean = startRealClean,
-  openFullDiskAccess = Privacy.openFullDiskAccess,
-}: Props) {
+export function CleanTab() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [progress, setProgress] = useState<ScanProgress | null>(null);
   const [groupBytes, setGroupBytes] = useState<Partial<Record<JunkGroupID, number>>>({});
   const [result, setResult] = useState<ScanResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const cleaning = useCleaning(startClean);
+  const cleaning = useCleaning();
   const sessionRef = useRef<ScanSession | null>(null);
   const runRef = useRef(0);
 
@@ -138,9 +127,7 @@ export function CleanTab({
           </button>
         </section>
       )}
-      {phase === "review" && result && (
-        <Review result={result} onScanAgain={begin} onClean={clean} openFullDiskAccess={openFullDiskAccess} />
-      )}
+      {phase === "review" && result && <Review result={result} onScanAgain={begin} onClean={clean} />}
       {phase === "cleaning" && <CleaningView {...cleaning} />}
       {phase === "done" && cleaning.report && <DoneView {...cleaning} report={cleaning.report} onFinish={finish} />}
     </main>
@@ -148,7 +135,7 @@ export function CleanTab({
 }
 
 /** A running or finished Clean: its Strata layers, live progress, and report. */
-function useCleaning(startClean: StartClean) {
+function useCleaning() {
   const [layers, setLayers] = useState<CleanLayer[]>([]);
   const [progress, setProgress] = useState<Partial<Record<JunkGroupID, CleanProgress>>>({});
   const [active, setActive] = useState<JunkGroupID | null>(null);

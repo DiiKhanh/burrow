@@ -1,8 +1,6 @@
 import { useState } from "react";
-import type { SettingsPane } from "../mygo";
+import { Privacy, type SettingsPane } from "../mygo";
 import { strings } from "../strings";
-
-export type OpenFullDiskAccess = () => Promise<SettingsPane>;
 
 /** What the user still has to do after the button, by what opened. */
 type Outcome = SettingsPane | "failed";
@@ -19,16 +17,14 @@ const OUTCOME_INK: Record<Outcome, string> = {
   failed: "text-danger",
 };
 
-type Props = { openFullDiskAccess: OpenFullDiskAccess };
-
 /**
  * Shown when a Scan could not read some junk groups. Burrow cannot tell
  * whether Full Disk Access is on, so it only sends the user where to grant it.
  */
-export function FullDiskAccessNotice({ openFullDiskAccess }: Props) {
+export function FullDiskAccessNotice() {
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const open = () => {
-    openFullDiskAccess().then(setOutcome, () => setOutcome("failed"));
+    Privacy.openFullDiskAccess().then(setOutcome, () => setOutcome("failed"));
   };
   return (
     <section

@@ -31,8 +31,7 @@ export function BarSpark({ data, max, slots = SERIES_SLOTS, className }: Props) 
         const height = Math.max(MIN_BAR, (Math.min(value, top) / top) * HEIGHT);
         return (
           <rect
-            // Bars are positions in time, never reordered.
-            // biome-ignore lint/suspicious/noArrayIndexKey: see above
+            // Bars are positions in time, never reordered, so the index is their key.
             key={i}
             x={coordinate(position * slot)}
             y={coordinate(HEIGHT - height)}

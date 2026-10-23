@@ -4,7 +4,7 @@ import { snapshot } from "../src/testing/snapshots";
 
 // Go's side of the page: the fake client's hook in `--mode fake`.
 async function sendStatus(page: Page, s: Snapshot) {
-  await page.evaluate((payload) => window.burrowFake?.emitStatus(payload), s);
+  await page.evaluate((payload) => window.burrowFake?.status.emit(payload), s);
 }
 
 function card(page: Page, name: string) {

@@ -1,12 +1,12 @@
 import { act, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Snapshot } from "../mygo";
-import { events } from "../testing/mygo.fake";
+import { fakeGo } from "../testing/mygo.fake";
 import { snapshot } from "../testing/snapshots";
 import { StatusTab } from "./StatusTab";
 
 function show(s: Snapshot) {
-  act(() => events.status.emit(s));
+  act(() => fakeGo.status.emit(s));
 }
 
 function card(name: string) {
