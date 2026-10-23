@@ -87,8 +87,8 @@ func watchStatusWhileShown(win *mygo.Window, watcher *engine.StatusWatcher) {
 // as the built-app smoke test does, and quits once that process closes its
 // end of the pipes.
 func serveAutomation(page *mygo.Page) {
-	requests := os.NewFile(3, "automation requests")
-	responses := os.NewFile(4, "automation responses")
+	requests := os.NewFile(automation.RequestsFD, "automation requests")
+	responses := os.NewFile(automation.ResponsesFD, "automation responses")
 	if err := automation.Serve(context.Background(), requests, responses, page.EvalContext); err != nil {
 		log.Printf("serving automation: %v", err)
 	}

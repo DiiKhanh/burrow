@@ -13,9 +13,16 @@ import (
 )
 
 // Env is the environment variable that, set to "1", makes Burrow serve
-// requests on file descriptor 3 and answer on 4: only the launching process
-// holds the other ends.
+// requests on RequestsFD and answer on ResponsesFD: only the launching
+// process holds the other ends.
 const Env = "BURROW_AUTOMATION"
+
+// The file descriptors the app serves on: the launcher's first and second
+// extra files.
+const (
+	RequestsFD  = 3
+	ResponsesFD = 4
+)
 
 // Eval runs script in the page and returns its value, as Page.EvalContext does.
 type Eval func(ctx context.Context, script string) (any, error)
@@ -29,18 +36,26 @@ type response struct {
 	Error string          `json:"error,omitempty"`
 }
 
-// maxLine bounds one request or response.
-const maxLine = 4 << 20
+// A request or response starts in a lineBuffer and may grow to maxLine.
+const (
+	lineBuffer = 64 << 10
+	maxLine    = 4 << 20
+)
+
+func newLineScanner(r io.Reader) *bufio.Scanner {
+	lines := bufio.NewScanner(r)
+	lines.Buffer(make([]byte, 0, lineBuffer), maxLine)
+	return lines
+}
 
 // Serve answers every request with eval, one at a time, until requests end
 // or ctx is done. It returns nil once requests end.
 func Serve(ctx context.Context, requests io.Reader, responses io.Writer, eval Eval) error {
-	lines := bufio.NewScanner(requests)
-	lines.Buffer(make([]byte, 0, 64<<10), maxLine)
+	lines := newLineScanner(requests)
 	encoder := json.NewEncoder(responses)
 	for lines.Scan() {
 		if err := ctx.Err(); err != nil {
-			return err
+			return fmt.Errorf("automation: serving: %w", err)
 		}
 		if err := encoder.Encode(answer(ctx, lines.Bytes(), eval)); err != nil {
 			return fmt.Errorf("automation: writing a response: %w", err)
@@ -80,9 +95,7 @@ type Client struct {
 
 // NewClient returns a Client that reads responses and writes requests.
 func NewClient(responses io.Reader, requests io.Writer) *Client {
-	lines := bufio.NewScanner(responses)
-	lines.Buffer(make([]byte, 0, 64<<10), maxLine)
-	return &Client{responses: lines, requests: json.NewEncoder(requests)}
+	return &Client{responses: newLineScanner(responses), requests: json.NewEncoder(requests)}
 }
 
 // ErrBroken means an earlier script was abandoned, so the Client can no
@@ -104,7 +117,7 @@ func (c *Client) Eval(ctx context.Context, script string) (json.RawMessage, erro
 	select {
 	case <-ctx.Done():
 		c.broken = true
-		return nil, ctx.Err()
+		return nil, fmt.Errorf("automation: waiting for a response: %w", ctx.Err())
 	case err := <-read:
 		if err != nil {
 			c.broken = true
@@ -128,5 +141,5 @@ func (c *Client) read() error {
 	if err := c.responses.Err(); err != nil {
 		return fmt.Errorf("automation: reading a response: %w", err)
 	}
-	return io.ErrUnexpectedEOF
+	return fmt.Errorf("automation: the app closed its responses: %w", io.ErrUnexpectedEOF)
 }

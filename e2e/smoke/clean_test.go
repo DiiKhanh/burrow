@@ -69,6 +69,7 @@ type cleanEnd struct {
 	Failed  string `json:"failed"`
 }
 
+// reviewGroup is one junk group's checkbox in Review.
 type reviewGroup struct {
 	Name         string `json:"name"`
 	Checked      string `json:"checked"`
@@ -157,7 +158,7 @@ func selectOnly(t *testing.T, app *page, groups []reviewGroup, name string) {
 		}
 		var ok bool
 		app.eval(&ok, toggleGroupScript, group.Name)
-		if group.Checked == "mixed" {
+		if group.Checked == "mixed" && !want {
 			// Clicking a partly selected group selects all of it.
 			app.eval(&ok, toggleGroupScript, group.Name)
 		}
@@ -218,10 +219,12 @@ func assertHistory(t *testing.T, home string, selected testhome.Item) {
 	}
 }
 
+// within reports whether path is root or inside it.
 func within(path, root string) bool {
 	return path == root || strings.HasPrefix(path, root+string(filepath.Separator))
 }
 
+// treeBytes sums the sizes of the regular files under root.
 func treeBytes(t *testing.T, root string) int64 {
 	t.Helper()
 	var total int64
@@ -239,8 +242,7 @@ func treeBytes(t *testing.T, root string) int64 {
 		return nil
 	})
 	if err != nil {
-		t.Errorf("measuring %s: %v", root, err)
-		return -1
+		t.Fatalf("measuring %s: %v", root, err)
 	}
 	return total
 }
