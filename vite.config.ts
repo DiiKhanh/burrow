@@ -6,6 +6,7 @@ import { defineConfig, type Plugin } from "vite";
 
 const realClient = fileURLToPath(new URL("./src/mygo.ts", import.meta.url));
 const fakeClient = fileURLToPath(new URL("./src/testing/mygo.fake.ts", import.meta.url));
+const fakeRuntime = fileURLToPath(new URL("./src/testing/mygo-runtime.fake.ts", import.meta.url));
 
 /** Swaps the generated MyGo client for the scripted fake in tests and `--mode fake`. */
 function fakeMyGoClient(): Plugin {
@@ -13,6 +14,7 @@ function fakeMyGoClient(): Plugin {
     name: "burrow:fake-mygo-client",
     enforce: "pre",
     async resolveId(source, importer, options) {
+      if (source === "mygo-runtime") return fakeRuntime;
       if (importer === fakeClient) return null;
       const resolved = await this.resolve(source, importer, { ...options, skipSelf: true });
       return resolved?.id === realClient ? fakeClient : null;
