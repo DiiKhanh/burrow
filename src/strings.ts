@@ -30,6 +30,7 @@ export const strings = {
     steps: {
       label: "Clean progress",
       items: ["Scan", "Review", "Clean", "Done"],
+      done: "✓",
     },
     idle: {
       title: "Let's see what can go.",
@@ -37,15 +38,27 @@ export const strings = {
       action: "Start scan",
     },
     scanProgress: "Scan progress",
-    scanResults: "Scan results",
     preparing: "Preparing scan…",
     cancel: "Cancel",
     scanError: "Scan could not finish. Try again.",
     pendingSize: "-",
     foundSoFar: (size: string) => `${size} found so far`,
-    found: (size: string) => `${size} found`,
     groupProgress: (name: string) => `${name} scan progress`,
-    groupResult: (name: string, size: string) => `${name}, ${size}`,
+    review: {
+      groups: "Junk groups",
+      /** The unit after the big number: "GB selected". */
+      selected: (unit: string) => `${unit} selected`,
+      share: "Selection by junk group",
+      /** One color bar segment: "App Caches, 1.2 GB". */
+      segment: (name: string, size: string) => `${name}, ${size}`,
+      /** "3/5": selected items of all the group's items. */
+      count: (selected: number, total: number) => `${selected}/${total}`,
+      movesToTrash: "moves to Trash",
+      showItems: (name: string) => `${name} items`,
+      chevron: "›",
+      scanAgain: "← Scan again",
+      clean: (count: number) => `Clean ${plural(count, "item", "items")} →`,
+    },
     groups: {
       appCaches: { name: "App Caches", description: "Temporary files apps rebuild on next launch." },
       browsers: { name: "Browsers", description: "Browser caches. Sites may load slower the first time." },

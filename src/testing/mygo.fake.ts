@@ -3,6 +3,10 @@
 // shape in step with the Go services.
 import type { GoEvent } from "mygo-runtime";
 import type * as Real from "../mygo";
+import { fullScan, longScan } from "./scans";
+
+/** Scan results by the page's `?scan=` scenario; any other value gets fullScan. */
+const SCANS: Record<string, Real.ScanResult> = { long: longScan };
 
 export const Clean = {
   scan: async (updates: Parameters<typeof Real.Clean.scan>[0]): Promise<Real.ScanResult> => {
@@ -53,24 +57,7 @@ export const Clean = {
           fraction: 1,
         }),
       );
-      later(50, () =>
-        resolve({
-          groups: [
-            {
-              id: "app-caches",
-              removalMethod: "delete",
-              defaultSelected: true,
-              items: [{ id: "cache", path: "/Users/test/Library/Caches/Burrow", bytes: 1_200_000_000 }],
-            },
-            {
-              id: "device-firmware",
-              removalMethod: "move-to-trash",
-              defaultSelected: false,
-              items: [{ id: "firmware", path: "/Users/test/Library/iTunes/Burrow.ipsw", bytes: 7_000_000_000 }],
-            },
-          ],
-        }),
-      );
+      later(50, () => resolve(SCANS[scenario ?? ""] ?? fullScan));
     });
   },
 } as const satisfies typeof Real.Clean;

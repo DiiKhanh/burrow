@@ -2,7 +2,8 @@ import { defineConfig, devices } from "@playwright/test";
 
 // The page runs in WKWebView inside the app, so the tests use WebKit.
 // The dev server runs in `fake` mode: the scripted client stands in for Go.
-const port = 5174;
+// E2E_PORT moves it, so checkouts side by side each test their own page.
+const port = Number(process.env.E2E_PORT ?? 5174);
 
 export default defineConfig({
   testDir: "e2e",
