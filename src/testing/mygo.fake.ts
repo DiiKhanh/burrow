@@ -8,10 +8,64 @@ import { fullScan, longScan } from "./scans";
 /** Scan results by the page's `?scan=` scenario; any other value gets fullScan. */
 const SCANS: Record<string, Real.ScanResult> = { long: longScan };
 
+/** The page's `?<name>=` scenario. */
+function scenario(name: string): string | null {
+  return new URLSearchParams(location.search).get(name);
+}
+
+/** The ScanResult the page's `?scan=` scenario resolves to. */
+function scanFor(name: string | null): Real.ScanResult {
+  return SCANS[name ?? ""] ?? fullScan;
+}
+
 export const Clean = {
+  /**
+   * Cleans the selected items of the page's scan, one every 20 ms. Like the
+   * engine until Move to Trash lands, it refuses a selection with items of a
+   * Move to Trash group. Scenarios by `?clean=`: `skipped` skips the first
+   * item as in use, `running` stops after the first item and never ends.
+   */
+  clean: async (ids: string[], updates: Parameters<typeof Real.Clean.clean>[1]): Promise<Real.CleanReport> => {
+    if (!("close" in updates)) return { items: [], freedBytes: 0 };
+    const mode = scenario("clean");
+    const selected = new Set(ids);
+    const groups = scanFor(scenario("scan"))
+      .groups.map((group) => ({ ...group, items: group.items.filter((item) => selected.has(item.id)) }))
+      .filter((group) => group.items.length > 0);
+    if (groups.some((group) => group.removalMethod !== "delete")) {
+      throw new Error("clean: Move to Trash is not available yet");
+    }
+    const steps = groups.flatMap((group) => group.items.map((item, index) => ({ group, item, index })));
+    let report: Real.CleanReport = { items: [], freedBytes: 0 };
+    let progress: Real.CleanProgress | null = null;
+    for (const { group, item, index } of steps) {
+      await new Promise((done) => setTimeout(done, 20));
+      const skipReason = mode === "skipped" && report.items.length === 0 ? "in_use" : null;
+      const freedBytes = report.freedBytes + (skipReason ? 0 : item.bytes);
+      report = {
+        items: [
+          ...report.items,
+          { id: item.id, path: item.path, bytes: item.bytes, method: group.removalMethod, skipReason },
+        ],
+        freedBytes,
+      };
+      const before: Pick<Real.CleanProgress, "cleaned" | "skipped"> =
+        index === 0 || !progress ? { cleaned: 0, skipped: 0 } : progress;
+      progress = {
+        groupId: group.id,
+        selected: group.items.length,
+        cleaned: before.cleaned + (skipReason ? 0 : 1),
+        skipped: before.skipped + (skipReason ? 1 : 0),
+        freedBytes,
+      };
+      if (!updates.closed) updates.onmessage?.(progress);
+      if (mode === "running") return new Promise(() => {});
+    }
+    return report;
+  },
   scan: async (updates: Parameters<typeof Real.Clean.scan>[0]): Promise<Real.ScanResult> => {
     if (!("close" in updates)) return { groups: [] };
-    const scenario = new URLSearchParams(location.search).get("scan");
+    const scanScenario = scenario("scan");
     return new Promise((resolve, reject) => {
       const timers: ReturnType<typeof setTimeout>[] = [];
       const later = (delay: number, action: () => void) => timers.push(setTimeout(action, delay));
@@ -23,7 +77,7 @@ export const Clean = {
         reject(new Error("scan cancelled"));
       };
 
-      if (scenario === "running") {
+      if (scanScenario === "running") {
         later(20, () =>
           emit({
             groupId: "app-caches",
@@ -35,7 +89,7 @@ export const Clean = {
         );
         return;
       }
-      if (scenario === "indeterminate") {
+      if (scanScenario === "indeterminate") {
         later(20, () =>
           emit({
             groupId: "browsers",
@@ -57,7 +111,7 @@ export const Clean = {
           fraction: 1,
         }),
       );
-      later(50, () => resolve(SCANS[scenario ?? ""] ?? fullScan));
+      later(50, () => resolve(scanFor(scanScenario)));
     });
   },
 } as const satisfies typeof Real.Clean;

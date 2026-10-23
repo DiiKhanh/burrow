@@ -5,11 +5,14 @@ package clean
 import (
 	"context"
 	"errors"
+	"log/slog"
+	"path/filepath"
 	"sync"
 )
 
-// ErrScanInProgress means another Scan already owns the single Scan slot.
-var ErrScanInProgress = errors.New("clean: scan already in progress")
+// ErrBusy means a Scan or Clean is already running: they never overlap, so
+// the shared Mole scan list and the current ScanResult stay consistent.
+var ErrBusy = errors.New("clean: a Scan or Clean is already running")
 
 // JunkGroupID is a stable, untranslated junk-group code.
 type JunkGroupID string
@@ -71,19 +74,50 @@ type Scanner interface {
 // Engine is the deep module callers use for Clean operations.
 type Engine struct {
 	scanner Scanner
-	scanMu  sync.Mutex
+	home    string
+	remover Remover
+	logger  *slog.Logger
+	// busy is held by the running Scan or Clean: they never overlap.
+	busy sync.Mutex
+	// current is the latest ScanResult, the only items Clean may remove.
+	current ScanResult
 }
 
-// NewEngine constructs an Engine around its external Scan adapter.
-func NewEngine(scanner Scanner) *Engine {
-	return &Engine{scanner: scanner}
+// Options configures an Engine. Home is injected so nothing inside the
+// engine looks up the real home folder.
+type Options struct {
+	Scanner Scanner
+	Home    string
+	Remover Remover
+	Logger  *slog.Logger
 }
 
-// Scan finds junk without removing anything.
-func (e *Engine) Scan(ctx context.Context, onProgress func(ScanProgress) error) (ScanResult, error) {
-	if !e.scanMu.TryLock() {
-		return ScanResult{}, ErrScanInProgress
+// NewEngine constructs an Engine from its injected Home and adapters.
+func NewEngine(options Options) *Engine {
+	logger := options.Logger
+	if logger == nil {
+		logger = slog.Default()
 	}
-	defer e.scanMu.Unlock()
-	return e.scanner.Scan(ctx, onProgress)
+	return &Engine{
+		scanner: options.Scanner,
+		home:    filepath.Clean(options.Home),
+		remover: options.Remover,
+		logger:  logger,
+	}
+}
+
+// Scan finds junk without removing anything. Its result becomes the set of
+// items a later Clean may remove.
+func (e *Engine) Scan(ctx context.Context, onProgress func(ScanProgress) error) (ScanResult, error) {
+	if !e.busy.TryLock() {
+		return ScanResult{}, ErrBusy
+	}
+	defer e.busy.Unlock()
+	e.current = ScanResult{}
+	result, err := e.scanner.Scan(ctx, onProgress)
+	if err != nil {
+		return ScanResult{}, err
+	}
+	e.current = result
+	return result, nil
 }

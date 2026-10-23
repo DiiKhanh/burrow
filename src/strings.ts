@@ -1,6 +1,6 @@
 // Every string the user sees. Components never hardcode text: they read it
 // here, and strings with numbers or plurals are functions.
-import type { BatteryState, HealthLevel, HealthReason, MemoryPressure } from "./mygo";
+import type { BatteryState, HealthLevel, HealthReason, MemoryPressure, SkipReason } from "./mygo";
 
 const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
 
@@ -16,6 +16,13 @@ function duration(seconds: number): string {
   if (seconds < 86_400) return plural(Math.floor(seconds / 3_600), "hour", "hours");
   return plural(Math.floor(seconds / 86_400), "day", "days");
 }
+
+const skipReasons = {
+  in_use: "in use",
+  permission_denied: "permission denied",
+  protected: "protected",
+  already_gone: "already gone",
+} as const satisfies Record<SkipReason, string>;
 
 export const strings = {
   app: {
@@ -44,6 +51,26 @@ export const strings = {
     pendingSize: "-",
     foundSoFar: (size: string) => `${size} found so far`,
     groupProgress: (name: string) => `${name} scan progress`,
+    cleanError: "Clean could not finish. Scan again to see what is left.",
+    cleaning: {
+      label: "Cleaning",
+      /** The unit after the big number: "GB freed so far". */
+      freedSoFar: (unit: string) => `${unit} freed so far`,
+      groupProgress: (name: string) => `${name} clean progress`,
+      /** "3 / 5": items removed of the group's selected items. */
+      count: (cleaned: number, selected: number) => `${cleaned} / ${selected}`,
+      skipped: (count: number) => `${count} skipped`,
+      layerDone: "✓",
+    },
+    done: {
+      label: "Clean summary",
+      /** The unit after the big number: "GB freed". */
+      freed: (unit: string) => `${unit} freed`,
+      summary: (removed: number, skipped: number) => `${removed} removed · ${skipped} skipped`,
+      /** One skipped item: "/Users/me/Library/Caches/x (in use)". */
+      skippedItem: (path: string, reason: SkipReason) => `${path} (${skipReasons[reason]})`,
+      finish: "Finish",
+    },
     review: {
       groups: "Junk groups",
       /** The unit after the big number: "GB selected". */

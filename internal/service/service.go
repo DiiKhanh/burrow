@@ -37,17 +37,38 @@ func NewClean() (*Clean, func(*clean.Engine)) {
 // Scan streams progress through updates and returns the complete preview.
 // MyGo cancels ctx when the page closes updates.
 func (s *Clean) Scan(ctx context.Context, updates *mygo.Channel[clean.ScanProgress]) (clean.ScanResult, error) {
-	s.mu.RLock()
-	engine := s.engine
-	s.mu.RUnlock()
-	if engine == nil {
-		return clean.ScanResult{}, ErrCleanUnavailable
+	engine, err := s.currentEngine()
+	if err != nil {
+		return clean.ScanResult{}, err
 	}
 	result, err := engine.Scan(ctx, updates.Send)
 	if errors.Is(err, mygo.ErrChannelClosed) {
 		return clean.ScanResult{}, context.Canceled
 	}
 	return result, err
+}
+
+// Clean removes the selected junk items of the latest Scan, by id, streaming
+// progress through updates. MyGo cancels ctx when the page closes updates.
+func (s *Clean) Clean(ctx context.Context, ids []string, updates *mygo.Channel[clean.CleanProgress]) (clean.CleanReport, error) {
+	engine, err := s.currentEngine()
+	if err != nil {
+		return clean.CleanReport{}, err
+	}
+	report, err := engine.Clean(ctx, ids, updates.Send)
+	if errors.Is(err, mygo.ErrChannelClosed) {
+		return clean.CleanReport{}, context.Canceled
+	}
+	return report, err
+}
+
+func (s *Clean) currentEngine() (*clean.Engine, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.engine == nil {
+		return nil, ErrCleanUnavailable
+	}
+	return s.engine, nil
 }
 
 // Status is the bound service behind the Status tab: live system health.

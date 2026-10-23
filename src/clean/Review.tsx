@@ -20,10 +20,12 @@ import { TriCheckbox } from "./TriCheckbox";
 type Props = {
   result: ScanResult;
   onScanAgain: () => void;
+  /** Starts Clean with the selected junk item ids. */
+  onClean: (ids: string[]) => void;
 };
 
 /** Step 2: pick the junk groups and junk items to clean. */
-export function Review({ result, onScanAgain }: Props) {
+export function Review({ result, onScanAgain, onClean }: Props) {
   const [selection, setSelection] = useState<Selection>(() => defaultSelection(result));
   const [hovered, setHovered] = useState<JunkGroupID | null>(null);
   const shares = result.groups.map((group) => ({ id: group.id, bytes: selectedBytes(group, selection) }));
@@ -58,7 +60,9 @@ export function Review({ result, onScanAgain }: Props) {
         <button type="button" onClick={onScanAgain} className="text-ink-muted text-note hover:text-ink">
           {strings.clean.review.scanAgain}
         </button>
-        <PillButton disabled={selection.size === 0}>{strings.clean.review.clean(selection.size)}</PillButton>
+        <PillButton disabled={selection.size === 0} onClick={() => onClean([...selection])}>
+          {strings.clean.review.clean(selection.size)}
+        </PillButton>
       </div>
     </>
   );

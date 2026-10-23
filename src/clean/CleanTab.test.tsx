@@ -1,8 +1,8 @@
 import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import type { ScanProgress, ScanResult } from "../mygo";
-import { CleanTab, type StartScan } from "./CleanTab";
+import type { CleanProgress, CleanReport, ScanProgress, ScanResult } from "../mygo";
+import { CleanTab, type StartClean, type StartScan } from "./CleanTab";
 
 describe("Clean Scan", () => {
   it("starts at the Scan call-to-action and enters Strata scanning", async () => {
@@ -190,6 +190,136 @@ describe("Clean Review", () => {
   });
 });
 
+describe("Clean and Done", () => {
+  it("cleans the selection as one Strata layer per selected junk group", async () => {
+    const { user, clean } = await review(REVIEW_RESULT);
+
+    await user.click(screen.getByRole("button", { name: "Clean 3 items →" }));
+
+    expect(clean.ids).toEqual(["spotify", "slack", "notion"]);
+    const strata = screen.getByRole("status", { name: "Cleaning" });
+    expect(layerNames(strata)).toEqual(["App Caches", "App Leftovers"]);
+    expect(within(strata).getByText(wholeText("0 B freed so far"))).toBeVisible();
+    const steps = screen.getByRole("list", { name: "Clean progress" });
+    expect(within(steps).getByText("Clean").closest("li")).toHaveAttribute("aria-current", "step");
+
+    act(() => clean.emit({ groupId: "app-caches", selected: 2, cleaned: 1, skipped: 0, freedBytes: 1_000_000_000 }));
+    expect(within(strata).getByText(wholeText("1 GB freed so far"))).toBeVisible();
+    expect(layer(strata, "App Caches")).toHaveTextContent("1 / 2");
+    expect(screen.getByRole("progressbar", { name: "App Caches clean progress" })).toHaveAttribute("value", "0.5");
+    expect(layer(strata, "App Leftovers")).toHaveTextContent("0 / 1");
+
+    act(() => clean.emit({ groupId: "app-caches", selected: 2, cleaned: 1, skipped: 1, freedBytes: 1_000_000_000 }));
+    expect(layer(strata, "App Caches")).toHaveTextContent("1 skipped");
+    expect(layer(strata, "App Caches")).toHaveTextContent("1 / 2");
+  });
+
+  it("ends on Done with what was removed and skipped, then Finish starts over", async () => {
+    const { user, clean } = await review(REVIEW_RESULT);
+    await user.click(screen.getByRole("button", { name: "Clean 3 items →" }));
+
+    await act(async () => {
+      clean.emit({ groupId: "app-caches", selected: 2, cleaned: 1, skipped: 1, freedBytes: 1_000_000_000 });
+      clean.emit({ groupId: "app-leftovers", selected: 1, cleaned: 1, skipped: 0, freedBytes: 1_250_000_000 });
+      clean.resolve({
+        items: [
+          {
+            id: "spotify",
+            path: "/Users/test/Library/Caches/com.spotify.client",
+            bytes: 1_000_000_000,
+            method: "delete",
+            skipReason: null,
+          },
+          {
+            id: "slack",
+            path: "/Users/test/Library/Caches/com.tinyspeck.slackmacgap",
+            bytes: 400_000_000,
+            method: "delete",
+            skipReason: "in_use",
+          },
+          {
+            id: "notion",
+            path: "/Users/test/Library/Application Support/Notion",
+            bytes: 250_000_000,
+            method: "delete",
+            skipReason: null,
+          },
+        ],
+        freedBytes: 1_250_000_000,
+      });
+      await Promise.resolve();
+    });
+
+    const steps = screen.getByRole("list", { name: "Clean progress" });
+    expect(within(steps).getByText("Done").closest("li")).toHaveAttribute("aria-current", "step");
+    expect(screen.getByText(wholeText("1.25 GB freed"))).toBeVisible();
+    expect(screen.getByText("2 removed · 1 skipped")).toBeVisible();
+    expect(screen.getByText("/Users/test/Library/Caches/com.tinyspeck.slackmacgap (in use)")).toBeVisible();
+
+    await user.click(screen.getByRole("button", { name: "Finish" }));
+    expect(screen.getByRole("heading", { name: "Let's see what can go." })).toBeVisible();
+  });
+
+  it("names every skip reason", async () => {
+    const { user, clean } = await review(REVIEW_RESULT);
+    await user.click(screen.getByRole("button", { name: "Clean 3 items →" }));
+
+    await act(async () => {
+      clean.resolve({
+        items: [
+          { id: "a", path: "/Users/test/a", bytes: 1, method: "delete", skipReason: "in_use" },
+          { id: "b", path: "/Users/test/b", bytes: 1, method: "delete", skipReason: "permission_denied" },
+          { id: "c", path: "/Users/test/c", bytes: 1, method: "delete", skipReason: "protected" },
+          { id: "d", path: "/Users/test/d", bytes: 1, method: "delete", skipReason: "already_gone" },
+        ],
+        freedBytes: 0,
+      });
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText("0 removed · 4 skipped")).toBeVisible();
+    for (const line of [
+      "/Users/test/a (in use)",
+      "/Users/test/b (permission denied)",
+      "/Users/test/c (protected)",
+      "/Users/test/d (already gone)",
+    ]) {
+      expect(screen.getByText(line)).toBeVisible();
+    }
+  });
+
+  it("returns to the start with a message when Clean fails", async () => {
+    const { user, clean } = await review(REVIEW_RESULT);
+    await user.click(screen.getByRole("button", { name: "Clean 3 items →" }));
+
+    await act(async () => {
+      clean.reject(new Error("busy"));
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText("Clean could not finish. Scan again to see what is left.")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Start scan" })).toBeVisible();
+  });
+});
+
+const GROUP_NAMES = ["App Caches", "Developer Tools", "App Leftovers", "Device Firmware"];
+
+/** The Strata layers' junk group names, top to bottom. */
+function layerNames(strata: HTMLElement) {
+  return within(strata)
+    .getAllByRole("listitem")
+    .map((item) => GROUP_NAMES.find((name) => within(item).queryByText(name, { exact: true })));
+}
+
+/** The Strata layer showing the junk group name. */
+function layer(strata: HTMLElement, name: string) {
+  const found = within(strata)
+    .getAllByRole("listitem")
+    .find((item) => within(item).queryByText(name, { exact: true }));
+  if (!found) throw new Error(`no Strata layer ${name}`);
+  return found;
+}
+
 const REVIEW_RESULT: ScanResult = {
   groups: [
     {
@@ -239,14 +369,41 @@ function wholeText(text: string) {
 /** Scans to completion and lands on Review with result. */
 async function review(result: ScanResult) {
   const scan = controlledScan();
+  const clean = controlledClean();
   const user = userEvent.setup();
-  render(<CleanTab startScan={scan.start} />);
+  render(<CleanTab startScan={scan.start} startClean={clean.start} />);
   await user.click(screen.getByRole("button", { name: "Start scan" }));
   await act(async () => {
     scan.resolve(result);
     await Promise.resolve();
   });
-  return { scan, user };
+  return { scan, clean, user };
+}
+
+/** A Clean the test drives, settled by resolve or reject. */
+function controlledClean() {
+  let listener: (progress: CleanProgress) => void = () => {};
+  let settle: { resolve: (report: CleanReport) => void; reject: (error: Error) => void } = {
+    resolve: () => {},
+    reject: () => {},
+  };
+  let ids: readonly string[] = [];
+  const start: StartClean = (selection, onProgress) => {
+    ids = selection;
+    listener = onProgress;
+    return new Promise<CleanReport>((resolve, reject) => {
+      settle = { resolve, reject };
+    });
+  };
+  return {
+    start,
+    emit: (progress: CleanProgress) => listener(progress),
+    resolve: (report: CleanReport) => settle.resolve(report),
+    reject: (error: Error) => settle.reject(error),
+    get ids() {
+      return ids;
+    },
+  };
 }
 
 /** A Scan the test drives: each start gets its own result, settled by resolve. */
