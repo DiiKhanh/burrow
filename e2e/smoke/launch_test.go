@@ -81,6 +81,8 @@ func TestAppShipsMole(t *testing.T) {
 	}
 }
 
+// The app's own Scanner runs the bundled Mole, so the test covers the sudo
+// shim that keeps a passwordless-sudo machine from previewing system paths.
 func TestAppBundledMoleScansTheGeneratedHome(t *testing.T) {
 	bundle, err := mole.Locate(resources)
 	if err != nil {
@@ -89,18 +91,19 @@ func TestAppBundledMoleScansTheGeneratedHome(t *testing.T) {
 	manifest := generatedHome(t)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, bundle.Mo(), "clean", "--dry-run")
-	cmd.Env = []string{"HOME=" + manifest.Home, "PATH=/usr/bin:/bin:/usr/sbin:/sbin", "TERM=dumb"}
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("mo clean --dry-run: %v\n%s", err, out)
-	}
-	cleanList, err := os.ReadFile(filepath.Join(manifest.Home, ".config/mole/clean-list.txt"))
+	result, err := mole.NewScanner(bundle, manifest.Home, nil).Scan(ctx, nil)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("scanning the generated home: %v", err)
+	}
+	scanned := make(map[string]bool)
+	for _, group := range result.Groups {
+		for _, item := range group.Items {
+			scanned[item.Path] = true
+		}
 	}
 	for _, item := range manifest.Items {
-		if !bytes.Contains(cleanList, []byte(item.Path)) {
-			t.Errorf("clean-list did not contain generated fixture item %s", item.Path)
+		if !scanned[item.Path] {
+			t.Errorf("Scan did not find generated fixture item %s", item.Path)
 		}
 	}
 }

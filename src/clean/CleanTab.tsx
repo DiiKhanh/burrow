@@ -2,8 +2,9 @@ import { Channel } from "mygo-runtime";
 import { useRef, useState } from "react";
 import { formatBytes } from "../format";
 import { Clean, type JunkGroupID, type ScanProgress, type ScanResult } from "../mygo";
+import { PillButton } from "../shell/PillButton";
 import { strings } from "../strings";
-import { junkGroupCatalog } from "./catalog";
+import { Review } from "./Review";
 import { ScanStrata } from "./ScanStrata";
 
 export type ScanSession = { result: Promise<ScanResult>; cancel: () => void };
@@ -14,7 +15,7 @@ const startRealScan: StartScan = (onProgress) => {
   return { result: Clean.scan(updates), cancel: () => updates.close() };
 };
 
-type Phase = "idle" | "scanning" | "result";
+type Phase = "idle" | "scanning" | "review";
 
 type Props = { startScan?: StartScan };
 
@@ -47,7 +48,7 @@ export function CleanTab({ startScan = startRealScan }: Props) {
       (next) => {
         if (runRef.current !== run) return;
         setResult(next);
-        setPhase("result");
+        setPhase("review");
         sessionRef.current = null;
       },
       () => {
@@ -69,20 +70,14 @@ export function CleanTab({ startScan = startRealScan }: Props) {
   };
 
   return (
-    <main className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col items-center gap-6 px-6 pt-8 pb-16">
+    <main className="mx-auto flex min-h-0 w-full max-w-clean flex-1 flex-col items-center gap-6 px-6 pt-8 pb-16">
       <Stepper phase={phase} />
       {phase === "idle" && (
         <section className="flex flex-1 flex-col items-center justify-center gap-5 text-center">
-          <h1 className="font-bold text-metric">{strings.clean.idle.title}</h1>
-          <p className="max-w-xl text-body text-ink-muted">{strings.clean.idle.description}</p>
+          <h1 className="font-bold text-title">{strings.clean.idle.title}</h1>
+          <p className="text-ink-muted text-note">{strings.clean.idle.description}</p>
           {error && <p className="text-body text-danger">{strings.clean.scanError}</p>}
-          <button
-            type="button"
-            onClick={begin}
-            className="rounded-full bg-pill px-5 py-2 font-semibold text-button text-pill-ink"
-          >
-            {strings.clean.idle.action}
-          </button>
+          <PillButton onClick={begin}>{strings.clean.idle.action}</PillButton>
         </section>
       )}
       {phase === "scanning" && (
@@ -103,50 +98,40 @@ export function CleanTab({ startScan = startRealScan }: Props) {
           </button>
         </section>
       )}
-      {phase === "result" && result && (
-        <section className="flex w-full flex-1 flex-col justify-center gap-4">
-          <p className="tabular font-bold text-metric">{strings.clean.found(formatBytes(totalBytes(result)))}</p>
-          <ul
-            aria-label={strings.clean.scanResults}
-            className="w-full divide-y divide-line overflow-hidden rounded-card border border-line bg-surface"
-          >
-            {result.groups.map((group) => (
-              <li key={group.id} className="flex items-center gap-4 px-4 py-3">
-                <div className="min-w-0 flex-1">
-                  <p className="font-medium text-body text-ink">{junkGroupCatalog[group.id].name}</p>
-                  <p className="truncate text-label text-ink-faint">{junkGroupCatalog[group.id].description}</p>
-                </div>
-                <span className="tabular font-mono text-body text-size">
-                  {formatBytes(group.items.reduce((sum, item) => sum + item.bytes, 0))}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+      {phase === "review" && result && <Review result={result} onScanAgain={begin} />}
     </main>
   );
 }
 
+/** The step each phase belongs to: Scan, Review, Clean, Done. */
+const STEP: Record<Phase, number> = { idle: 0, scanning: 0, review: 1 };
+
+type StepState = "done" | "current" | "ahead";
+
+const BADGE: Record<StepState, string> = {
+  done: "bg-ok text-pill-ink",
+  current: "bg-pill text-pill-ink",
+  ahead: "border border-line-strong text-ink-faint",
+};
+
+function stepState(index: number, current: number): StepState {
+  if (index < current) return "done";
+  return index === current ? "current" : "ahead";
+}
+
 function Stepper({ phase }: { phase: Phase }) {
-  const active = phase === "idle" || phase === "scanning" ? 0 : 1;
+  const current = STEP[phase];
   return (
-    <ol aria-label={strings.clean.steps.label} className="flex items-center gap-2 font-mono text-label">
+    <ol aria-label={strings.clean.steps.label} className="flex items-center gap-2 font-mono text-caption">
       {strings.clean.steps.items.map((step, index) => (
-        <li key={step} className="flex items-center gap-2">
-          <span
-            className={`grid size-5 place-items-center rounded-full ${index === active ? "bg-pill text-pill-ink" : "border border-line-strong text-ink-faint"}`}
-          >
-            {index + 1}
+        <li key={step} aria-current={index === current ? "step" : undefined} className="flex items-center gap-2">
+          <span className={`grid size-5 place-items-center rounded-full ${BADGE[stepState(index, current)]}`}>
+            {index < current ? strings.clean.steps.done : index + 1}
           </span>
-          <span className={index === active ? "text-ink" : "text-ink-faint"}>{step}</span>
+          <span className={index === current ? "text-ink" : "text-ink-faint"}>{step}</span>
           {index < strings.clean.steps.items.length - 1 && <span className="h-px w-8 bg-line-strong" />}
         </li>
       ))}
     </ol>
   );
-}
-
-function totalBytes(result: ScanResult): number {
-  return result.groups.reduce((total, group) => total + group.items.reduce((sum, item) => sum + item.bytes, 0), 0);
 }

@@ -18,7 +18,15 @@ export function formatBytes(bytes: number | null): string {
 
 export function formatBytesParts(bytes: number | null): FormattedMetric {
   if (!isQuantity(bytes)) return { value: strings.unavailable };
-  if (Math.round(bytes) < STEP) return { value: String(Math.round(bytes)), unit: BYTE };
+  return bytesParts(bytes);
+}
+
+/** A formatted quantity split for display: "12.6" and "GB". */
+export type SizeParts = { value: string; unit: string };
+
+/** formatBytes as its number and unit, for a big number with a smaller unit. */
+export function bytesParts(bytes: number): SizeParts {
+  if (Math.round(bytes) < STEP) return { value: String(Math.max(0, Math.round(bytes))), unit: BYTE };
   return scale(bytes / STEP, BYTE_MULTIPLES);
 }
 
@@ -47,14 +55,15 @@ function isQuantity(value: number | null): value is number {
 }
 
 /** Formats value in the first unit, moving up a unit while it rounds to 1000 or more. */
-function scale(value: number, units: readonly string[]): FormattedMetric {
+function scale(value: number, units: readonly string[]): SizeParts {
   let unit = 0;
   let scaled = value;
   while (roundToSignificant(scaled) >= STEP && unit < units.length - 1) {
     scaled /= STEP;
     unit++;
   }
-  return { value: threeSignificantDigits.format(scaled), unit: units[unit] };
+  // The loop stops at the last unit, so the lookup always hits.
+  return { value: threeSignificantDigits.format(scaled), unit: units[unit] ?? "" };
 }
 
 function joinMetric(metric: FormattedMetric): string {

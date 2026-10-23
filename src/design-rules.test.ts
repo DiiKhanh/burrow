@@ -32,7 +32,7 @@ describe("components", () => {
   });
 
   it("hardcode no text", () => {
-    // JSX text between tags, e.g. <span>Scan</span>.
-    expect(offenders(/>\s*[A-Za-z][^<>{}]*</g)).toEqual([]);
+    // JSX text between tags, e.g. <span>Scan</span>; an arrow's `=>` is not a tag.
+    expect(offenders(/(?<!=)>\s*[A-Za-z][^<>{}]*</g)).toEqual([]);
   });
 });
