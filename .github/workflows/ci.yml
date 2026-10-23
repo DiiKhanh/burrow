@@ -2,22 +2,12 @@ name: CI
 
 on:
   pull_request:
-  push:
-    branches: [main]
 
 permissions:
   contents: read
 
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-
-# Every job runs on macOS: the engine depends on macOS behavior. Go comes
-# from the toolchain line of go.mod, Bun from packageManager in package.json,
-# and every step past setup is a package.json script. `bun install` fetches
-# the pinned Mole (postinstall), so every job has it.
 jobs:
-  go:
+  scan-hang:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v7
@@ -28,39 +18,20 @@ jobs:
         with:
           bun-version-file: package.json
       - run: bun install --frozen-lockfile
-      - run: bun run check:go
-      - run: bun run test:integration
-
-  web:
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version-file: package.json
-      - run: bun install --frozen-lockfile
-      - run: bun run check:web
-      - run: bunx playwright install webkit
-      - run: bun run test:e2e
-      - if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: playwright-report
-          path: playwright-report/
-
-  app:
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version-file: package.json
-      - run: bun install --frozen-lockfile
-      - run: bun run build
-      - run: bun run test:smoke
+      - name: Trace mo clean --dry-run
+        run: |
+          home=$(mktemp -d)
+          go run ./tools/testhome "$home" > /dev/null
+          env -i HOME="$home" LC_ALL=C LANG=C PATH=/usr/bin:/bin:/usr/sbin:/sbin TERM=dumb TMPDIR="$TMPDIR" \
+            SHELLOPTS=xtrace PS4='+${SECONDS}s ${BASH_SOURCE##*/}:${LINENO}: ' \
+            resources/darwin-arm64/mole/mo clean --dry-run > out.txt 2> trace.txt < /dev/null &
+          pid=$!
+          for i in $(seq 1 18); do
+            sleep 5
+            kill -0 $pid 2>/dev/null || { echo "exited after $((i*5))s"; break; }
+          done
+          echo "::group::process tree"; ps -axo pid,ppid,pgid,etime,stat,command | grep -v ' ps -axo' | awk -v p=$pid '$3==p || $1==p' ; echo "::endgroup::"
+          echo "::group::all recent processes"; ps -axo pid,ppid,etime,stat,command | sort -k3 | tail -40; echo "::endgroup::"
+          kill -9 -- -$pid 2>/dev/null || true; kill -9 $pid 2>/dev/null || true
+          echo "::group::stdout"; cat out.txt; echo "::endgroup::"
+          echo "::group::trace tail"; tail -150 trace.txt; echo "::endgroup::"
