@@ -1,17 +1,15 @@
 import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
-import type { CleanProgress, CleanReport, ScanProgress, ScanResult } from "../mygo";
-import { CleanTab, type StartClean, type StartScan } from "./CleanTab";
-import type { OpenFullDiskAccess } from "./FullDiskAccessNotice";
+import { describe, expect, it } from "vitest";
+import type { ScanResult } from "../mygo";
+import { fakeGo } from "../testing/mygo.fake";
+import { CleanTab } from "./CleanTab";
 
 describe("Clean Scan", () => {
   it("starts at the Scan call-to-action and enters Strata scanning", async () => {
-    const never = new Promise<never>(() => {});
-    const startScan: StartScan = vi.fn(() => ({ result: never, cancel: vi.fn() }));
     const user = userEvent.setup();
 
-    render(<CleanTab startScan={startScan} />);
+    render(<CleanTab />);
     expect(screen.getByRole("heading", { name: "Let's see what can go." })).toBeVisible();
 
     await user.click(screen.getByRole("button", { name: "Start scan" }));
@@ -22,10 +20,10 @@ describe("Clean Scan", () => {
   });
 
   it("shows mapped progress, recomputed bytes, current path, and indeterminate state", async () => {
-    const scan = controlledScan();
     const user = userEvent.setup();
-    render(<CleanTab startScan={scan.start} />);
+    render(<CleanTab />);
     await user.click(screen.getByRole("button", { name: "Start scan" }));
+    const scan = fakeGo.scan.last;
 
     act(() => {
       scan.emit({
@@ -54,13 +52,13 @@ describe("Clean Scan", () => {
   });
 
   it("cancels the channel and ignores late progress and results", async () => {
-    const scan = controlledScan();
     const user = userEvent.setup();
-    render(<CleanTab startScan={scan.start} />);
+    render(<CleanTab />);
     await user.click(screen.getByRole("button", { name: "Start scan" }));
+    const scan = fakeGo.scan.last;
     await user.click(screen.getByRole("button", { name: "Cancel" }));
 
-    expect(scan.cancel).toHaveBeenCalledOnce();
+    expect(scan.cancelled).toBe(true);
     expect(screen.getByRole("button", { name: "Start scan" })).toBeVisible();
 
     await act(async () => {
@@ -87,6 +85,32 @@ describe("Clean Scan", () => {
 
     expect(screen.getByRole("button", { name: "Start scan" })).toBeVisible();
     expect(screen.queryByText("99 GB found")).not.toBeInTheDocument();
+  });
+
+  it("keeps a new Scan clear of the cancelled one ending in error", async () => {
+    const user = userEvent.setup();
+    render(<CleanTab />);
+    await user.click(screen.getByRole("button", { name: "Start scan" }));
+    const cancelled = fakeGo.scan.last;
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await user.click(screen.getByRole("button", { name: "Start scan" }));
+
+    await act(async () => {
+      cancelled.emit({
+        groupId: "device-firmware",
+        groupBytes: 99_000_000_000,
+        foundBytes: 99_000_000_000,
+        currentPath: "/late.ipsw",
+        fraction: 1,
+      });
+      cancelled.reject(new Error("context canceled"));
+      await Promise.resolve();
+    });
+
+    expect(fakeGo.scan.calls).toHaveLength(2);
+    expect(screen.getByRole("status", { name: "Scan progress" })).toBeVisible();
+    expect(screen.getByText("0 B found so far")).toBeVisible();
+    expect(screen.queryByText("Scan could not finish. Try again.")).not.toBeInTheDocument();
   });
 });
 
@@ -131,7 +155,7 @@ describe("Clean Review", () => {
   });
 
   it("marks Scan done and Review current, and scans again from the footer", async () => {
-    const { user, scan } = await review(REVIEW_RESULT);
+    const { user } = await review(REVIEW_RESULT);
     const steps = screen.getByRole("list", { name: "Clean progress" });
 
     expect(within(steps).getByText("Review").closest("li")).toHaveAttribute("aria-current", "step");
@@ -139,7 +163,7 @@ describe("Clean Review", () => {
 
     await user.click(screen.getByRole("button", { name: "← Scan again" }));
     expect(screen.getByRole("status", { name: "Scan progress" })).toBeVisible();
-    expect(scan.starts).toBe(2);
+    expect(fakeGo.scan.calls).toHaveLength(2);
   });
 
   it("splits the color bar by selected junk group", async () => {
@@ -194,10 +218,11 @@ describe("Clean Review", () => {
 
 describe("Clean and Done", () => {
   it("cleans the selection as one Strata layer per selected junk group", async () => {
-    const { user, clean } = await review(REVIEW_RESULT);
+    const { user } = await review(REVIEW_RESULT);
 
     await user.click(screen.getByRole("button", { name: "Clean 3 items →" }));
 
+    const clean = fakeGo.clean.last;
     expect(clean.ids).toEqual(["spotify", "slack", "notion"]);
     const strata = screen.getByRole("status", { name: "Cleaning" });
     expect(layerNames(strata)).toEqual(["App Caches", "App Leftovers"]);
@@ -217,8 +242,9 @@ describe("Clean and Done", () => {
   });
 
   it("ends on Done with what was removed and skipped, then Finish starts over", async () => {
-    const { user, clean } = await review(REVIEW_RESULT);
+    const { user } = await review(REVIEW_RESULT);
     await user.click(screen.getByRole("button", { name: "Clean 3 items →" }));
+    const clean = fakeGo.clean.last;
 
     await act(async () => {
       clean.emit({ groupId: "app-caches", selected: 2, cleaned: 1, skipped: 1, freedBytes: 1_000_000_000 });
@@ -263,8 +289,9 @@ describe("Clean and Done", () => {
   });
 
   it("names every skip reason", async () => {
-    const { user, clean } = await review(REVIEW_RESULT);
+    const { user } = await review(REVIEW_RESULT);
     await user.click(screen.getByRole("button", { name: "Clean 3 items →" }));
+    const clean = fakeGo.clean.last;
 
     await act(async () => {
       clean.resolve({
@@ -291,8 +318,9 @@ describe("Clean and Done", () => {
   });
 
   it("returns to the start with a message when Clean fails", async () => {
-    const { user, clean } = await review(REVIEW_RESULT);
+    const { user } = await review(REVIEW_RESULT);
     await user.click(screen.getByRole("button", { name: "Clean 3 items →" }));
+    const clean = fakeGo.clean.last;
 
     await act(async () => {
       clean.reject(new Error("busy"));
@@ -397,19 +425,20 @@ describe("Clean Review with protected access unavailable", () => {
   });
 
   it("opens Full Disk Access in System Settings", async () => {
-    const openFullDiskAccess = vi.fn(async () => "full-disk-access" as const);
-    const { user } = await review(UNREADABLE, openFullDiskAccess);
+    const { user } = await review(UNREADABLE);
 
     await user.click(screen.getByRole("button", { name: "Open System Settings" }));
+    act(() => fakeGo.privacy.last.resolve("full-disk-access"));
 
-    expect(openFullDiskAccess).toHaveBeenCalledOnce();
+    expect(fakeGo.privacy.calls).toHaveLength(1);
     expect(await screen.findByText("Turn on Burrow in Full Disk Access, then scan again.")).toBeVisible();
   });
 
   it("walks the user to Full Disk Access when only Privacy & Security opened", async () => {
-    const { user } = await review(UNREADABLE, async () => "privacy-security");
+    const { user } = await review(UNREADABLE);
 
     await user.click(screen.getByRole("button", { name: "Open System Settings" }));
+    act(() => fakeGo.privacy.last.resolve("privacy-security"));
 
     expect(
       await screen.findByText("In Privacy & Security, scroll to Full Disk Access, turn on Burrow, then scan again."),
@@ -417,11 +446,10 @@ describe("Clean Review with protected access unavailable", () => {
   });
 
   it("gives the manual path when System Settings did not open", async () => {
-    const { user } = await review(UNREADABLE, async () => {
-      throw new Error("no application can open it");
-    });
+    const { user } = await review(UNREADABLE);
 
     await user.click(screen.getByRole("button", { name: "Open System Settings" }));
+    act(() => fakeGo.privacy.last.reject(new Error("no application can open it")));
 
     expect(
       await screen.findByText(
@@ -438,66 +466,13 @@ function wholeText(text: string) {
 }
 
 /** Scans to completion and lands on Review with result. */
-async function review(result: ScanResult, openFullDiskAccess?: OpenFullDiskAccess) {
-  const scan = controlledScan();
-  const clean = controlledClean();
+async function review(result: ScanResult) {
   const user = userEvent.setup();
-  render(<CleanTab startScan={scan.start} startClean={clean.start} openFullDiskAccess={openFullDiskAccess} />);
+  render(<CleanTab />);
   await user.click(screen.getByRole("button", { name: "Start scan" }));
   await act(async () => {
-    scan.resolve(result);
+    fakeGo.scan.last.resolve(result);
     await Promise.resolve();
   });
-  return { scan, clean, user };
-}
-
-/** A Clean the test drives, settled by resolve or reject. */
-function controlledClean() {
-  let listener: (progress: CleanProgress) => void = () => {};
-  let settle: { resolve: (report: CleanReport) => void; reject: (error: Error) => void } = {
-    resolve: () => {},
-    reject: () => {},
-  };
-  let ids: readonly string[] = [];
-  const start: StartClean = (selection, onProgress) => {
-    ids = selection;
-    listener = onProgress;
-    return new Promise<CleanReport>((resolve, reject) => {
-      settle = { resolve, reject };
-    });
-  };
-  return {
-    start,
-    emit: (progress: CleanProgress) => listener(progress),
-    resolve: (report: CleanReport) => settle.resolve(report),
-    reject: (error: Error) => settle.reject(error),
-    get ids() {
-      return ids;
-    },
-  };
-}
-
-/** A Scan the test drives: each start gets its own result, settled by resolve. */
-function controlledScan() {
-  let listener: (progress: ScanProgress) => void = () => {};
-  let resolve: (result: ScanResult) => void = () => {};
-  const cancel = vi.fn();
-  let starts = 0;
-  const start: StartScan = (onProgress) => {
-    starts++;
-    listener = onProgress;
-    const result = new Promise<ScanResult>((done) => {
-      resolve = done;
-    });
-    return { result, cancel };
-  };
-  return {
-    start,
-    emit: (progress: ScanProgress) => listener(progress),
-    resolve: (result: ScanResult) => resolve(result),
-    cancel,
-    get starts() {
-      return starts;
-    },
-  };
+  return { user };
 }

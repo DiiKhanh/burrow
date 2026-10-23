@@ -1,130 +1,113 @@
-// The scripted stand-in for the generated client in src/mygo.ts, used by
-// Vitest and by `vite --mode fake` for Playwright. `satisfies` keeps its
-// shape in step with the Go services.
+// The stand-in for the generated client in src/mygo.ts, used by Vitest and by
+// `vite --mode fake` for Playwright. `satisfies` keeps its shape in step with
+// the Go services. Every call waits until a test settles it through `fakeGo`;
+// in `--mode fake` the autopilot settles them by the page's URL scenario.
 import type { GoEvent } from "mygo-runtime";
 import type * as Real from "../mygo";
-import { fullScan, longScan, unreadableScan } from "./scans";
+import { installAutopilot } from "./autopilot";
 
-/** Scan results by the page's `?scan=` scenario; any other value gets fullScan. */
-const SCANS: Record<string, Real.ScanResult> = { long: longScan, unreadable: unreadableScan };
+type ScanUpdates = Parameters<typeof Real.Clean.scan>[0];
+type CleanUpdates = Parameters<typeof Real.Clean.clean>[1];
 
-/** The page's `?<name>=` scenario. */
-function scenario(name: string): string | null {
-  return new URLSearchParams(location.search).get(name);
+/** A call to the fake that the test settles, as Go would. */
+type Pending<T> = { resolve(value: T): void; reject(error?: Error): void };
+
+/**
+ * A call that streams progress through a channel. Closing the channel only
+ * marks it cancelled: like Go, it still settles, and progress already on its
+ * way still arrives, so tests can send both late.
+ */
+export type StreamCall<P, T> = Pending<T> & { emit(progress: P): void; readonly cancelled: boolean };
+
+export type ScanCall = StreamCall<Real.ScanProgress, Real.ScanResult>;
+export type CleanCall = StreamCall<Real.CleanProgress, Real.CleanReport> & { readonly ids: readonly string[] };
+export type PrivacyCall = Pending<Real.SettingsPane>;
+
+/** The calls one method of the fake received, oldest first. */
+export type CallLog<C> = {
+  readonly calls: readonly C[];
+  /** The newest call; throws when there is none, so a test sees what it missed. */
+  readonly last: C;
+  /** Calls listener with every later call. */
+  onCall(listener: (call: C) => void): void;
+};
+
+function callLog<C>(method: string) {
+  let calls: readonly C[] = [];
+  let listeners: readonly ((call: C) => void)[] = [];
+  const log: CallLog<C> = {
+    get calls() {
+      return calls;
+    },
+    get last() {
+      const call = calls.at(-1);
+      if (!call) throw new Error(`fake: ${method} was not called`);
+      return call;
+    },
+    onCall(listener) {
+      listeners = [...listeners, listener];
+    },
+  };
+  return {
+    log,
+    record(call: C) {
+      calls = [...calls, call];
+      for (const listener of listeners) listener(call);
+    },
+    reset() {
+      calls = [];
+      listeners = [];
+    },
+  };
 }
 
-/** The ScanResult the page's `?scan=` scenario resolves to. */
-function scanFor(name: string | null): Real.ScanResult {
-  return SCANS[name ?? ""] ?? fullScan;
+function pending<T>(): { promise: Promise<T> } & Pending<T> {
+  let settle: Pending<T> = { resolve: () => {}, reject: () => {} };
+  const promise = new Promise<T>((resolve, reject) => {
+    settle = { resolve, reject };
+  });
+  return {
+    promise,
+    resolve: (value) => settle.resolve(value),
+    reject: (error = new Error("fake: rejected by the test")) => settle.reject(error),
+  };
 }
+
+function streamCall<P, T>(updates: { onmessage: ((value: P) => void) | null; readonly closed: boolean }) {
+  const settle = pending<T>();
+  const call: StreamCall<P, T> = {
+    resolve: settle.resolve,
+    reject: settle.reject,
+    emit: (progress) => updates.onmessage?.(progress),
+    get cancelled() {
+      return updates.closed;
+    },
+  };
+  return { call, promise: settle.promise };
+}
+
+const scans = callLog<ScanCall>("Clean.scan");
+const cleans = callLog<CleanCall>("Clean.clean");
+const privacy = callLog<PrivacyCall>("Privacy.openFullDiskAccess");
 
 export const Clean = {
-  /**
-   * Cleans the selected items of the page's scan, one every 20 ms. Like the
-   * engine until Move to Trash lands, it refuses a selection with items of a
-   * Move to Trash group. Scenarios by `?clean=`: `skipped` skips the first
-   * item as in use, `running` stops after the first item and never ends.
-   */
-  clean: async (ids: string[], updates: Parameters<typeof Real.Clean.clean>[1]): Promise<Real.CleanReport> => {
-    if (!("close" in updates)) return { items: [], freedBytes: 0 };
-    const mode = scenario("clean");
-    const selected = new Set(ids);
-    const groups = scanFor(scenario("scan"))
-      .groups.map((group) => ({ ...group, items: group.items.filter((item) => selected.has(item.id)) }))
-      .filter((group) => group.items.length > 0);
-    if (groups.some((group) => group.removalMethod !== "delete")) {
-      throw new Error("clean: Move to Trash is not available yet");
-    }
-    const steps = groups.flatMap((group) => group.items.map((item, index) => ({ group, item, index })));
-    let report: Real.CleanReport = { items: [], freedBytes: 0 };
-    let progress: Real.CleanProgress | null = null;
-    for (const { group, item, index } of steps) {
-      await new Promise((done) => setTimeout(done, 20));
-      const skipReason = mode === "skipped" && report.items.length === 0 ? "in_use" : null;
-      const freedBytes = report.freedBytes + (skipReason ? 0 : item.bytes);
-      report = {
-        items: [
-          ...report.items,
-          { id: item.id, path: item.path, bytes: item.bytes, method: group.removalMethod, skipReason },
-        ],
-        freedBytes,
-      };
-      const before: Pick<Real.CleanProgress, "cleaned" | "skipped"> =
-        index === 0 || !progress ? { cleaned: 0, skipped: 0 } : progress;
-      progress = {
-        groupId: group.id,
-        selected: group.items.length,
-        cleaned: before.cleaned + (skipReason ? 0 : 1),
-        skipped: before.skipped + (skipReason ? 1 : 0),
-        freedBytes,
-      };
-      if (!updates.closed) updates.onmessage?.(progress);
-      if (mode === "running") return new Promise(() => {});
-    }
-    return report;
+  clean: (ids: string[], updates: CleanUpdates): Promise<Real.CleanReport> => {
+    const { call, promise } = streamCall<Real.CleanProgress, Real.CleanReport>(updates);
+    cleans.record({ ...call, ids: [...ids] });
+    return promise;
   },
-  scan: async (updates: Parameters<typeof Real.Clean.scan>[0]): Promise<Real.ScanResult> => {
-    if (!("close" in updates)) return { groups: [], unreadable: [] };
-    const scanScenario = scenario("scan");
-    return new Promise((resolve, reject) => {
-      const timers: ReturnType<typeof setTimeout>[] = [];
-      const later = (delay: number, action: () => void) => timers.push(setTimeout(action, delay));
-      const emit = (progress: Real.ScanProgress) => {
-        if (!updates.closed) updates.onmessage?.(progress);
-      };
-      updates.onclose = () => {
-        timers.forEach(clearTimeout);
-        reject(new Error("scan cancelled"));
-      };
-
-      if (scanScenario === "running") {
-        later(20, () =>
-          emit({
-            groupId: "app-caches",
-            groupBytes: 400_000,
-            foundBytes: 1_500_000,
-            currentPath: "/Users/test/Library/Caches/Burrow",
-            fraction: 0.35,
-          }),
-        );
-        return;
-      }
-      if (scanScenario === "indeterminate") {
-        later(20, () =>
-          emit({
-            groupId: "browsers",
-            groupBytes: 0,
-            foundBytes: 1_500_000,
-            currentPath: "/Users/test/Library/Caches/Browser",
-            fraction: null,
-          }),
-        );
-        return;
-      }
-
-      later(20, () =>
-        emit({
-          groupId: "app-caches",
-          groupBytes: 1_200_000_000,
-          foundBytes: 1_200_000_000,
-          currentPath: "/Users/test/Library/Caches/Burrow",
-          fraction: 1,
-        }),
-      );
-      later(50, () => resolve(scanFor(scanScenario)));
-    });
+  scan: (updates: ScanUpdates): Promise<Real.ScanResult> => {
+    const { call, promise } = streamCall<Real.ScanProgress, Real.ScanResult>(updates);
+    scans.record(call);
+    return promise;
   },
 } as const satisfies typeof Real.Clean;
 
-/**
- * Which System Settings pane opens, by the page's `?settings=` scenario:
- * `fallback` opens only Privacy & Security, `refused` opens nothing.
- */
 export const Privacy = {
-  openFullDiskAccess: async (): Promise<Real.SettingsPane> => {
-    const settings = scenario("settings");
-    if (settings === "refused") throw new Error("System Settings did not open");
-    return settings === "fallback" ? "privacy-security" : "full-disk-access";
+  openFullDiskAccess: (): Promise<Real.SettingsPane> => {
+    const { promise, ...call } = pending<Real.SettingsPane>();
+    privacy.record(call);
+    return promise;
   },
 } as const satisfies typeof Real.Privacy;
 
@@ -133,7 +116,7 @@ export const Status = {
 } as const satisfies typeof Real.Status;
 
 /** An event the test sends in place of Go. */
-export type FakeEvent<T> = GoEvent<T> & { emit(payload: T): void };
+type FakeEvent<T> = GoEvent<T> & { emit(payload: T): void };
 
 function fakeEvent<T>(name: string): FakeEvent<T> {
   const listeners = new Set<(payload: T) => void>();
@@ -165,8 +148,22 @@ export const events = {
   status: fakeEvent<Real.Snapshot>("status"),
 } as const satisfies typeof Real.events;
 
-/** What Playwright drives through `window.burrowFake` in `--mode fake`. */
-export type FakeGo = { emitStatus(snapshot: Real.Snapshot): void };
+/** What tests drive in place of Go: Vitest imports it, Playwright reaches it through `window.burrowFake`. */
+export const fakeGo = {
+  scan: scans.log,
+  clean: cleans.log,
+  privacy: privacy.log,
+  status: { emit: (snapshot: Real.Snapshot) => events.status.emit(snapshot) },
+};
+
+export type FakeGo = typeof fakeGo;
+
+/** Forgets every call and call listener, so each test starts from none. */
+export function resetFake() {
+  scans.reset();
+  cleans.reset();
+  privacy.reset();
+}
 
 declare global {
   interface Window {
@@ -174,6 +171,5 @@ declare global {
   }
 }
 
-if (typeof window !== "undefined") {
-  window.burrowFake = { emitStatus: (snapshot) => events.status.emit(snapshot) };
-}
+if (typeof window !== "undefined") window.burrowFake = fakeGo;
+if (import.meta.env.MODE === "fake") installAutopilot(fakeGo, location.search);

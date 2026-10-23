@@ -2,7 +2,7 @@ import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { App } from "./App";
-import { events } from "./testing/mygo.fake";
+import { fakeGo } from "./testing/mygo.fake";
 import { snapshot } from "./testing/snapshots";
 
 function renderApp() {
@@ -54,7 +54,7 @@ describe("App tabs", () => {
 describe("App status", () => {
   it("has the latest snapshot ready when Status opens", async () => {
     const user = renderApp();
-    act(() => events.status.emit(snapshot({ cpu: { usage: 42 } })));
+    act(() => fakeGo.status.emit(snapshot({ cpu: { usage: 42 } })));
 
     await user.click(screen.getByRole("tab", { name: "Status" }));
     const cpu = within(screen.getByRole("region", { name: "CPU" }));

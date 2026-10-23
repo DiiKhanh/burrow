@@ -4,7 +4,7 @@ import type { JunkGroup, JunkGroupID, ScanResult } from "../mygo";
 import { PillButton } from "../shell/PillButton";
 import { strings } from "../strings";
 import { JUNK_GROUP_ORDER, junkGroupCatalog } from "./catalog";
-import { FullDiskAccessNotice, type OpenFullDiskAccess } from "./FullDiskAccessNotice";
+import { FullDiskAccessNotice } from "./FullDiskAccessNotice";
 import { SelectionBar } from "./SelectionBar";
 import {
   defaultSelection,
@@ -23,7 +23,6 @@ type Props = {
   onScanAgain: () => void;
   /** Starts Clean with the selected junk item ids. */
   onClean: (ids: string[]) => void;
-  openFullDiskAccess: OpenFullDiskAccess;
 };
 
 type ReviewRow = { id: JunkGroupID; group: JunkGroup | null; unreadable: boolean };
@@ -40,7 +39,7 @@ function reviewRows(result: ScanResult): ReviewRow[] {
 }
 
 /** Step 2: pick the junk groups and junk items to clean. */
-export function Review({ result, onScanAgain, onClean, openFullDiskAccess }: Props) {
+export function Review({ result, onScanAgain, onClean }: Props) {
   const [selection, setSelection] = useState<Selection>(() => defaultSelection(result));
   const [hovered, setHovered] = useState<JunkGroupID | null>(null);
   const shares = result.groups.map((group) => ({ id: group.id, bytes: selectedBytes(group, selection) }));
@@ -76,7 +75,7 @@ export function Review({ result, onScanAgain, onClean, openFullDiskAccess }: Pro
           ),
         )}
       </ul>
-      {result.unreadable.length > 0 && <FullDiskAccessNotice openFullDiskAccess={openFullDiskAccess} />}
+      {result.unreadable.length > 0 && <FullDiskAccessNotice />}
       <div className="flex w-full items-center justify-between">
         <button type="button" onClick={onScanAgain} className="text-ink-muted text-note hover:text-ink">
           {strings.clean.review.scanAgain}
