@@ -54,13 +54,22 @@ func TestScanReportsTheLockedJunkGroups(t *testing.T) {
 	}
 }
 
-func TestScanFailsWhenItCannotTellWhichAppsRun(t *testing.T) {
+func TestScanStillEndsWhenItCannotTellWhichAppsRun(t *testing.T) {
 	processes := cleantest.NewFakeProcesses()
 	processes.Fail(errors.New("sysctl refused"))
-	engine := clean.NewEngine(clean.Options{Scanner: fixedScan(), Processes: processes})
+	engine := clean.NewEngine(clean.Options{
+		Scanner:   fixedScan(clean.JunkGroup{ID: clean.Browsers}),
+		Processes: processes,
+		Logger:    quiet,
+	})
 
-	if _, err := engine.Scan(context.Background(), nil); err == nil {
-		t.Fatal("Scan error = nil, want the process listing error")
+	result, err := engine.Scan(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("Scan error = %v, want the Scan to end", err)
+	}
+	// Review learns the locks on its next ask; Clean still refuses the group.
+	if len(result.Locked) != 0 || len(result.Groups) != 1 {
+		t.Fatalf("Scan = %#v, want the group and no locks", result)
 	}
 }
 
@@ -87,6 +96,45 @@ func TestCleanSkipsTheItemsOfALockedGroupAsInUse(t *testing.T) {
 		Items: []clean.CleanedItem{
 			{ID: "chrome", Path: chrome, Bytes: 2_000, Method: method(clean.Delete), SkipReason: reason(clean.InUse)},
 			{ID: "logs", Path: logs, Bytes: 1_000, Method: method(clean.Delete)},
+		},
+		FreedBytes: 1_000,
+	})
+}
+
+func TestCleanSkipsTheRestOfAGroupOnceItsAppStartsMidway(t *testing.T) {
+	home := newHome(t)
+	first := writeFile(t, home, "Library/Caches/com.apple.Safari/first.db", 1_000)
+	second := writeFile(t, home, "Library/Caches/com.apple.Safari/second.db", 2_000)
+	processes := cleantest.NewFakeProcesses()
+	remover := &cleantest.FakeRemover{Fail: func(string) error {
+		processes.Set("Safari")
+		return nil
+	}}
+	engine := clean.NewEngine(clean.Options{
+		Scanner: fixedScan(clean.JunkGroup{ID: clean.Browsers, RemovalMethod: clean.Delete, Items: []clean.JunkItem{
+			{ID: "first", Path: first, Bytes: 1_000},
+			{ID: "second", Path: second, Bytes: 2_000},
+		}}),
+		Home:      home,
+		Remover:   remover,
+		Processes: processes,
+		Logger:    quiet,
+	})
+	if _, err := engine.Scan(context.Background(), nil); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := engine.Clean(context.Background(), []string{"first", "second"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	assertGone(t, first)
+	assertExists(t, second)
+	assertReport(t, report, clean.CleanReport{
+		Items: []clean.CleanedItem{
+			{ID: "first", Path: first, Bytes: 1_000, Method: method(clean.Delete)},
+			{ID: "second", Path: second, Bytes: 2_000, Method: method(clean.Delete), SkipReason: reason(clean.InUse)},
 		},
 		FreedBytes: 1_000,
 	})

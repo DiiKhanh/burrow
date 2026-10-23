@@ -3,6 +3,7 @@ package clean
 import (
 	"bytes"
 	"fmt"
+	"os"
 	"slices"
 
 	"golang.org/x/sys/unix"
@@ -83,20 +84,24 @@ func (e *Engine) Locked() ([]LockedGroup, error) {
 // isLocked reports whether group is locked right now. When Burrow cannot
 // tell which apps run, every group an app can lock counts as locked.
 func (e *Engine) isLocked(group JunkGroupID) bool {
+	if !slices.ContainsFunc(groupOwners, func(owners groupOwner) bool { return owners.group == group }) {
+		return false
+	}
 	locked, err := e.Locked()
 	if err != nil {
 		e.logger.Warn("could not tell which apps run", "error", err)
-		return slices.ContainsFunc(groupOwners, func(owners groupOwner) bool { return owners.group == group })
+		return true
 	}
 	return slices.ContainsFunc(locked, func(lock LockedGroup) bool { return lock.ID == group })
 }
 
-// OSProcesses lists the processes running on this Mac.
+// OSProcesses lists the processes the user running Burrow runs on this Mac.
+// Another user's browser never touches this user's caches.
 type OSProcesses struct{}
 
-// Names returns the name of every process the kernel lists.
+// Names returns the name of every process of this user the kernel lists.
 func (OSProcesses) Names() ([]string, error) {
-	procs, err := unix.SysctlKinfoProcSlice("kern.proc.all")
+	procs, err := unix.SysctlKinfoProcSlice("kern.proc.uid", os.Getuid())
 	if err != nil {
 		return nil, fmt.Errorf("listing processes: %w", err)
 	}

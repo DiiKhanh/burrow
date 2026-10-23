@@ -127,8 +127,11 @@ func (e *Engine) Scan(ctx context.Context, onProgress func(ScanProgress) error) 
 	if err != nil {
 		return ScanResult{}, err
 	}
+	// Not knowing which apps run must not cost the Scan: Review asks again
+	// within a second, and Clean refuses a lockable group meanwhile.
 	if result.Locked, err = e.Locked(); err != nil {
-		return ScanResult{}, err
+		e.logger.Warn("could not tell which apps run", "error", err)
+		result.Locked = []LockedGroup{}
 	}
 	e.current = result
 	return result, nil

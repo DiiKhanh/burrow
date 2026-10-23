@@ -70,7 +70,11 @@ func (s *Clean) Locked() ([]clean.LockedGroup, error) {
 	if err != nil {
 		return nil, err
 	}
-	return engine.Locked()
+	locked, err := engine.Locked()
+	if err != nil {
+		log.Printf("service: listing locked junk groups: %v", err)
+	}
+	return locked, err
 }
 
 func (s *Clean) currentEngine() (*clean.Engine, error) {

@@ -175,7 +175,7 @@ function GroupRow({
               )}
               {unreadable && <UnreadableLabel />}
             </span>
-            {lockedBy ? (
+            {lockedBy !== null ? (
               <span className="block truncate text-caption text-warn">{strings.clean.review.locked(lockedBy)}</span>
             ) : (
               <span className="block truncate text-caption text-ink-faint">{description}</span>

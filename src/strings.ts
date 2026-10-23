@@ -10,7 +10,7 @@ const SEPARATOR = " · ";
 const dayOfYear = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" });
 
 /** "Firefox, Safari, and Arc". */
-const appList = new Intl.ListFormat("en-US", { type: "conjunction" });
+const andList = new Intl.ListFormat("en-US", { type: "conjunction" });
 
 /** "21 days": the largest whole unit only. */
 function duration(seconds: number): string {
@@ -92,8 +92,8 @@ export const strings = {
       /** Why a locked junk group cannot be selected: "Safari is open. Quit it to clean." */
       locked: (apps: readonly string[]) =>
         apps.length === 1
-          ? `${appList.format(apps)} is open. Quit it to clean.`
-          : `${appList.format(apps)} are open. Quit them to clean.`,
+          ? `${andList.format(apps)} is open. Quit it to clean.`
+          : `${andList.format(apps)} are open. Quit them to clean.`,
     },
     fullDiskAccess: {
       label: "Full Disk Access",

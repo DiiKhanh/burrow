@@ -21,8 +21,8 @@ export function useLockedGroups(initial: readonly LockedGroup[]): ReadonlyMap<Ju
           (next) => {
             if (mounted) setLocked(next);
           },
-          // Go could not tell which apps run: the last answer stands, and the
-          // engine still skips a locked group's items as in use.
+          // Go logged that it could not tell which apps run. The last answer
+          // stands, and the engine still skips a locked group's items as in use.
           () => {},
         )
         .finally(() => {

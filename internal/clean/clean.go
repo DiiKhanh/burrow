@@ -93,24 +93,17 @@ func (e *Engine) run(ctx context.Context, realHome string, unknown []string, gro
 }
 
 // cleanGroup removes the selected items of one group into report, sending
-// progress before the first item and after each one. A group locked as it
-// starts is skipped whole, item by item, as in use.
+// progress before the first item and after each one.
 func (e *Engine) cleanGroup(ctx context.Context, realHome string, group JunkGroup, report *CleanReport, onProgress func(CleanProgress) error) error {
 	progress := CleanProgress{GroupID: group.ID, Selected: len(group.Items), FreedBytes: report.FreedBytes}
 	if err := sendCleanProgress(onProgress, progress); err != nil {
 		return err
 	}
-	locked := e.isLocked(group.ID)
 	for _, item := range group.Items {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		var cleaned CleanedItem
-		if locked {
-			cleaned = CleanedItem{ID: item.ID, Path: item.Path, Bytes: item.Bytes, Method: ptr(group.RemovalMethod), SkipReason: ptr(InUse)}
-		} else {
-			cleaned = e.remove(realHome, group.RemovalMethod, item)
-		}
+		cleaned := e.remove(realHome, group, item)
 		report.Items = append(report.Items, cleaned)
 		if cleaned.SkipReason == nil {
 			report.FreedBytes += item.Bytes
@@ -161,9 +154,14 @@ func (e *Engine) plan(selection []string) (unknown []string, groups []JunkGroup)
 	return unknown, groups
 }
 
-// remove checks item and removes it with method.
-func (e *Engine) remove(realHome string, method RemovalMethod, item JunkItem) CleanedItem {
-	cleaned := CleanedItem{ID: item.ID, Path: item.Path, Bytes: item.Bytes, Method: ptr(method)}
+// remove checks item of group and removes it with the group's method. An
+// item of a group locked right now is in use.
+func (e *Engine) remove(realHome string, group JunkGroup, item JunkItem) CleanedItem {
+	cleaned := CleanedItem{ID: item.ID, Path: item.Path, Bytes: item.Bytes, Method: ptr(group.RemovalMethod)}
+	if e.isLocked(group.ID) {
+		cleaned.SkipReason = ptr(InUse)
+		return cleaned
+	}
 	if reason, ok := e.guard(realHome, item.Path); !ok {
 		cleaned.SkipReason = ptr(reason)
 		return cleaned
