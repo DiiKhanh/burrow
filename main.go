@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 
+	"github.com/DiiKhanh/burrow/internal/automation"
 	"github.com/DiiKhanh/burrow/internal/clean"
 	"github.com/DiiKhanh/burrow/internal/engine"
 	"github.com/DiiKhanh/burrow/internal/mole"
@@ -59,6 +60,9 @@ func main() {
 			return bundle.WatchStatus(ctx, home, yield)
 		}
 		watchStatusWhileShown(win, engine.NewStatusWatcher(statusSource, service.BroadcastStatus))
+		if os.Getenv(automation.Env) == "1" {
+			go serveAutomation(win.Page())
+		}
 	})
 	if err := mygo.App.Run(); err != nil {
 		log.Fatalf("running Burrow: %v", err)
@@ -77,6 +81,18 @@ func watchStatusWhileShown(win *mygo.Window, watcher *engine.StatusWatcher) {
 	if win.IsVisible() && !win.IsMinimized() {
 		watcher.Start()
 	}
+}
+
+// serveAutomation lets the process that launched Burrow run scripts in page,
+// as the built-app smoke test does, and quits once that process closes its
+// end of the pipes.
+func serveAutomation(page *mygo.Page) {
+	requests := os.NewFile(3, "automation requests")
+	responses := os.NewFile(4, "automation responses")
+	if err := automation.Serve(context.Background(), requests, responses, page.EvalContext); err != nil {
+		log.Printf("serving automation: %v", err)
+	}
+	mygo.App.Quit()
 }
 
 // locateMole finds the Mole release Burrow ships, never one the user installed.
