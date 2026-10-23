@@ -32,6 +32,13 @@ Burrow ships its own Mole: `mole.lock` pins the release and the SHA-256 of what 
 
 These scripts are the only entry points; CI runs the same ones. The app is built with [MyGo](https://github.com/egoist/mygo): the Go side is in `main.go` and `internal/`, the React frontend in `src/`, and `src/mygo.ts` is generated from the Go services by `bun run generate`.
 
+## Release
+
+1. Set `version` in `mygo.config.ts` (X.Y.Z) and merge it.
+2. Push the tag `v` plus that version: `git tag v0.2.0 && git push origin v0.2.0`. A tag such as `v0.2.0-rc.1` publishes a pre-release of `0.2.0`, to try the pipeline.
+
+`.github/workflows/release.yml` fails on any other tag before building, runs all of CI, builds the app signed ad hoc, smoke tests it, and publishes its DMG and `SHA256SUMS` as a GitHub release. The install guide of `.github/release-notes.md` comes above notes generated from the merged PRs: there is no hand-written changelog. To sign with another identity, set the repository variable `MACOS_SIGNING_IDENTITY` and add a step importing that identity into the runner's keychain before the build.
+
 Architecture decisions are in [`docs/adr/`](docs/adr/) and the domain language in [`GLOSSARY.md`](GLOSSARY.md).
 
 ## License
