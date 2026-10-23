@@ -9,6 +9,7 @@ import (
 	"os"
 
 	"github.com/DiiKhanh/burrow/internal/clean"
+	"github.com/DiiKhanh/burrow/internal/engine"
 	"github.com/DiiKhanh/burrow/internal/mole"
 	"github.com/DiiKhanh/burrow/internal/service"
 	"github.com/egoist/mygo"
@@ -34,7 +35,7 @@ func main() {
 			log.Fatalf("finding the user's home: %v", err)
 		}
 		configureClean(clean.NewEngine(mole.NewScanner(bundle, home, slog.Default())))
-		mygo.NewWindow(mygo.WindowOptions{
+		win := mygo.NewWindow(mygo.WindowOptions{
 			Title:           "Burrow",
 			Width:           1100,
 			Height:          760,
@@ -47,9 +48,24 @@ func main() {
 			StateKey:             "main",
 			URL:                  "/",
 		})
+		watchStatusWhileShown(win, engine.NewStatusWatcher(bundle.WatchStatus, service.BroadcastStatus))
 	})
 	if err := mygo.App.Run(); err != nil {
 		log.Fatalf("running Burrow: %v", err)
+	}
+}
+
+// watchStatusWhileShown runs Status only while win is on screen, on any
+// tab: hidden, minimized or closed, Burrow collects nothing.
+func watchStatusWhileShown(win *mygo.Window, watcher *engine.StatusWatcher) {
+	win.OnShow(watcher.Start)
+	win.OnRestore(watcher.Start)
+	win.OnHide(watcher.Stop)
+	win.OnMinimize(watcher.Stop)
+	win.OnClosed(watcher.Stop)
+	// NewWindow showed the window before these listeners existed.
+	if win.IsVisible() && !win.IsMinimized() {
+		watcher.Start()
 	}
 }
 

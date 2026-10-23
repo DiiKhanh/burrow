@@ -56,10 +56,19 @@
   --text-tab--line-height: 1.5;
   --text-body: 0.8125rem;
   --text-body--line-height: 1.25rem;
+  --text-unit: 1rem;
+  --text-unit--line-height: 1.5;
+  --text-note: 0.875rem;
+  --text-note--line-height: 1.25rem;
+  --text-caption: 0.75rem;
+  --text-caption--line-height: 1rem;
   --text-label: 0.6875rem;
   --text-label--line-height: 1rem;
 
   --tracking-label: 0.14em;
+
+  /* Status bento: two rows of cards, the first column wider. */
+  --spacing-bento-row: 178px;
 
   --radius-card: 14px;
   --radius-window: 18px;
@@ -102,6 +111,11 @@
 /* Drags the window, as a title bar does; buttons inside stay clickable. */
 @utility drag-region {
   --app-region: drag;
+}
+
+@utility grid-bento {
+  grid-template-columns: minmax(0, 1.5fr) repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(2, var(--spacing-bento-row));
 }
 
 @utility tabular {
