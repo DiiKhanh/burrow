@@ -39,7 +39,8 @@ export interface CPU {
 
 /**
  * CleanProgress is an observable point in a running Clean: how far the
- * active junk group got, and the bytes freed by the whole run so far.
+ * active junk group got, and the bytes freed and moved to Trash by the whole
+ * run so far.
  */
 export interface CleanProgress {
   groupId: JunkGroupID;
@@ -47,6 +48,7 @@ export interface CleanProgress {
   cleaned: number;
   skipped: number;
   freedBytes: number;
+  trashedBytes: number;
 }
 
 /** CleanReport is the outcome of one Clean, item by item. */
@@ -54,6 +56,11 @@ export interface CleanReport {
   items: CleanedItem[];
   /** FreedBytes counts the Scan sizes of the deleted items. */
   freedBytes: number;
+  /**
+   * TrashedBytes counts the Scan sizes of the items moved to Trash: their
+   * space is freed only once the Trash is emptied.
+   */
+  trashedBytes: number;
 }
 
 /**

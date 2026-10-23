@@ -52,7 +52,7 @@ func scannedEngineWith(t *testing.T, home string, processes clean.Processes, gro
 	engine := clean.NewEngine(clean.Options{
 		Scanner:   fixedScan(groups...),
 		Home:      home,
-		Remover:   &cleantest.FakeRemover{},
+		Remover:   &cleantest.FakeRemover{TrashDir: trashDir(home)},
 		Processes: processes,
 		Logger:    quiet,
 	})
@@ -60,6 +60,12 @@ func scannedEngineWith(t *testing.T, home string, processes clean.Processes, gro
 		t.Fatal(err)
 	}
 	return engine
+}
+
+// trashDir is where the FakeRemover of an Engine on home moves items to
+// Trash: `<temp>/.Trash`, next to home rather than in it.
+func trashDir(home string) string {
+	return filepath.Join(filepath.Dir(home), ".Trash")
 }
 
 // quiet drops the engine's logs, which skipped items produce on purpose.
@@ -117,6 +123,9 @@ func assertReport(t *testing.T, got, want clean.CleanReport) {
 	if got.FreedBytes != want.FreedBytes {
 		t.Errorf("FreedBytes = %d, want %d", got.FreedBytes, want.FreedBytes)
 	}
+	if got.TrashedBytes != want.TrashedBytes {
+		t.Errorf("TrashedBytes = %d, want %d", got.TrashedBytes, want.TrashedBytes)
+	}
 	if g, w := views(got.Items), views(want.Items); !slices.Equal(g, w) {
 		t.Errorf("report items =\n%+v\nwant\n%+v", g, w)
 	}
@@ -144,22 +153,71 @@ func views(items []clean.CleanedItem) []itemView {
 	return out
 }
 
-func TestCleanRefusesMoveToTrashItemsBeforeRemovingAnything(t *testing.T) {
+func TestCleanRemovesEachJunkGroupWithItsOwnMethod(t *testing.T) {
 	home := newHome(t)
 	cache := writeFile(t, home, "Library/Caches/app.cache", 10)
 	leftover := writeFile(t, home, "Library/Application Support/Gone App/data", 20)
+	vm := writeFile(t, home, "Library/Containers/com.docker.docker/Data/vms/disk.img", 30)
+	firmware := writeFile(t, home, "Library/iTunes/iPhone Software Updates/iPhone.ipsw", 40)
 	engine := scannedEngine(t, home,
 		clean.JunkGroup{ID: clean.AppCaches, RemovalMethod: clean.Delete, Items: []clean.JunkItem{{ID: "cache", Path: cache, Bytes: 10}}},
-		clean.JunkGroup{ID: clean.AppLeftovers, RemovalMethod: clean.MoveToTrash, Items: []clean.JunkItem{{ID: "leftover", Path: leftover, Bytes: 20}}},
+		clean.JunkGroup{ID: clean.Virtualization, RemovalMethod: clean.MoveToTrash, Items: []clean.JunkItem{{ID: "vm", Path: filepath.Dir(vm), Bytes: 30}}},
+		clean.JunkGroup{ID: clean.AppLeftovers, RemovalMethod: clean.MoveToTrash, Items: []clean.JunkItem{{ID: "leftover", Path: filepath.Dir(leftover), Bytes: 20}}},
+		clean.JunkGroup{ID: clean.DeviceFirmware, RemovalMethod: clean.MoveToTrash, Items: []clean.JunkItem{{ID: "firmware", Path: firmware, Bytes: 40}}},
 	)
 
-	_, err := engine.Clean(context.Background(), []string{"cache", "leftover"}, nil)
-
-	if !errors.Is(err, clean.ErrMoveToTrashUnavailable) {
-		t.Fatalf("Clean error = %v, want ErrMoveToTrashUnavailable", err)
+	report, err := engine.Clean(context.Background(), []string{"cache", "vm", "leftover", "firmware"}, nil)
+	if err != nil {
+		t.Fatal(err)
 	}
-	assertExists(t, cache)
+
+	for _, path := range []string{cache, filepath.Dir(vm), filepath.Dir(leftover), firmware} {
+		assertGone(t, path)
+	}
+	trash := trashDir(home)
+	assertGone(t, filepath.Join(trash, "app.cache"))
+	for _, name := range []string{"vms/disk.img", "Gone App/data", "iPhone.ipsw"} {
+		assertExists(t, filepath.Join(trash, filepath.FromSlash(name)))
+	}
+	assertReport(t, report, clean.CleanReport{
+		Items: []clean.CleanedItem{
+			{ID: "cache", Path: cache, Bytes: 10, Method: method(clean.Delete)},
+			{ID: "vm", Path: filepath.Dir(vm), Bytes: 30, Method: method(clean.MoveToTrash)},
+			{ID: "leftover", Path: filepath.Dir(leftover), Bytes: 20, Method: method(clean.MoveToTrash)},
+			{ID: "firmware", Path: firmware, Bytes: 40, Method: method(clean.MoveToTrash)},
+		},
+		FreedBytes:   10,
+		TrashedBytes: 90,
+	})
+}
+
+func TestCleanSkipsAnItemTheTrashRefuses(t *testing.T) {
+	home := newHome(t)
+	leftover := writeFile(t, home, "Library/Application Support/Gone App/data", 20)
+	engine := clean.NewEngine(clean.Options{
+		Scanner: fixedScan(clean.JunkGroup{ID: clean.AppLeftovers, RemovalMethod: clean.MoveToTrash, Items: []clean.JunkItem{
+			{ID: "leftover", Path: leftover, Bytes: 20},
+		}}),
+		Home: home,
+		Remover: &cleantest.FakeRemover{TrashDir: trashDir(home), Fail: func(string) error {
+			return errors.New("the volume has no Trash")
+		}},
+		Processes: cleantest.NewFakeProcesses(),
+		Logger:    quiet,
+	})
+	if _, err := engine.Scan(context.Background(), nil); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := engine.Clean(context.Background(), []string{"leftover"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	assertExists(t, leftover)
+	assertReport(t, report, clean.CleanReport{Items: []clean.CleanedItem{
+		{ID: "leftover", Path: leftover, Bytes: 20, Method: method(clean.MoveToTrash), SkipReason: reason(clean.PermissionDenied)},
+	}})
 }
 
 func TestCleanReportsProgressByJunkGroup(t *testing.T) {
@@ -167,6 +225,7 @@ func TestCleanReportsProgressByJunkGroup(t *testing.T) {
 	cacheA := writeFile(t, home, "Library/Caches/a.cache", 100)
 	cacheB := writeFile(t, home, "Library/Caches/b.cache", 200)
 	trash := writeFile(t, home, ".Trash/old.data", 300)
+	leftover := writeFile(t, home, "Library/Application Support/Gone App/data", 400)
 	engine := scannedEngine(t, home,
 		clean.JunkGroup{ID: clean.AppCaches, RemovalMethod: clean.Delete, Items: []clean.JunkItem{
 			{ID: "a", Path: cacheA, Bytes: 100},
@@ -174,10 +233,11 @@ func TestCleanReportsProgressByJunkGroup(t *testing.T) {
 			{ID: "b", Path: cacheB, Bytes: 200},
 		}},
 		clean.JunkGroup{ID: clean.Trash, RemovalMethod: clean.Delete, Items: []clean.JunkItem{{ID: "trash", Path: trash, Bytes: 300}}},
+		clean.JunkGroup{ID: clean.AppLeftovers, RemovalMethod: clean.MoveToTrash, Items: []clean.JunkItem{{ID: "leftover", Path: leftover, Bytes: 400}}},
 	)
 	var got []clean.CleanProgress
 
-	_, err := engine.Clean(context.Background(), []string{"trash", "a", "documents", "b"}, func(p clean.CleanProgress) error {
+	_, err := engine.Clean(context.Background(), []string{"trash", "a", "documents", "b", "leftover"}, func(p clean.CleanProgress) error {
 		got = append(got, p)
 		return nil
 	})
@@ -192,6 +252,8 @@ func TestCleanReportsProgressByJunkGroup(t *testing.T) {
 		{GroupID: clean.AppCaches, Selected: 3, Cleaned: 2, Skipped: 1, FreedBytes: 300},
 		{GroupID: clean.Trash, Selected: 1, FreedBytes: 300},
 		{GroupID: clean.Trash, Selected: 1, Cleaned: 1, FreedBytes: 600},
+		{GroupID: clean.AppLeftovers, Selected: 1, FreedBytes: 600},
+		{GroupID: clean.AppLeftovers, Selected: 1, Cleaned: 1, FreedBytes: 600, TrashedBytes: 400},
 	}
 	if !slices.Equal(got, want) {
 		t.Errorf("progress =\n%+v\nwant\n%+v", got, want)

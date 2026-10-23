@@ -1,9 +1,10 @@
 version: "2"
 
 run:
-  # Lint the integration and smoke tests too.
+  # Lint the integration, smoke and real Trash tests too.
   build-tags:
     - integration
+    - realtrash
     - smoke
 
 linters:

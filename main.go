@@ -38,7 +38,7 @@ func main() {
 		configureClean(clean.NewEngine(clean.Options{
 			Scanner:   mole.NewScanner(bundle, home, slog.Default()),
 			Home:      home,
-			Remover:   clean.OSRemover{},
+			Remover:   clean.OSRemover{Trash: mygo.Shell.TrashItem},
 			Processes: clean.OSProcesses{},
 			Logger:    slog.Default(),
 		}))

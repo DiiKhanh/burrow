@@ -1,4 +1,4 @@
-import { bytesParts } from "../format";
+import { bytesParts, formatBytes } from "../format";
 import type { CleanProgress, CleanReport, JunkGroupID } from "../mygo";
 import { PillButton } from "../shell/PillButton";
 import { strings } from "../strings";
@@ -9,20 +9,26 @@ type Layers = {
   progress: Partial<Record<JunkGroupID, CleanProgress>>;
 };
 
-/** Step 3: the selected junk groups emptied layer by layer, freed bytes counting up. */
+/** Step 3: the selected junk groups emptied layer by layer, freed and trashed bytes counting up. */
 export function CleaningView({
   layers,
   progress,
   active,
   freedBytes,
-}: Layers & { active: JunkGroupID | null; freedBytes: number }) {
+  trashedBytes,
+}: Layers & { active: JunkGroupID | null; freedBytes: number; trashedBytes: number }) {
   return (
     <section
       aria-label={strings.clean.cleaning.label}
       role="status"
       className="flex w-full flex-1 flex-col justify-center gap-4"
     >
-      <FreedCounter bytes={freedBytes} unit={strings.clean.cleaning.freedSoFar} />
+      <RemovedTotals
+        freedBytes={freedBytes}
+        trashedBytes={trashedBytes}
+        freed={strings.clean.cleaning.freedSoFar}
+        trashed={strings.clean.cleaning.trashedSoFar}
+      />
       <CleanStrata layers={layers} progress={progress} active={active} />
     </section>
   );
@@ -41,7 +47,12 @@ export function DoneView({
       aria-label={strings.clean.done.label}
       className="flex w-full flex-1 flex-col items-center justify-center gap-4"
     >
-      <FreedCounter bytes={report.freedBytes} unit={strings.clean.done.freed} />
+      <RemovedTotals
+        freedBytes={report.freedBytes}
+        trashedBytes={report.trashedBytes}
+        freed={strings.clean.done.freed}
+        trashed={strings.clean.done.trashed}
+      />
       <CleanStrata layers={layers} progress={progress} active={null} />
       <p className="text-ink-muted text-note">
         {strings.clean.done.summary(report.items.length - skipped.length, skipped.length)}
@@ -60,7 +71,31 @@ export function DoneView({
   );
 }
 
-/** The big number above the Strata: "1.2" with its unit and caption, e.g. "GB freed so far". */
+/**
+ * The totals above the Strata: the freed bytes as the big number, then the
+ * bytes moved to Trash apart from them, since their space comes back only
+ * once the Trash is emptied. The Trash line is absent until any moved.
+ */
+function RemovedTotals({
+  freedBytes,
+  trashedBytes,
+  freed,
+  trashed,
+}: {
+  freedBytes: number;
+  trashedBytes: number;
+  freed: (unit: string) => string;
+  trashed: (size: string) => string;
+}) {
+  return (
+    <div className="w-full">
+      <FreedCounter bytes={freedBytes} unit={freed} />
+      {trashedBytes > 0 && <p className="tabular text-ink-muted text-note">{trashed(formatBytes(trashedBytes))}</p>}
+    </div>
+  );
+}
+
+/** The big number: "1.2" with its unit and caption, e.g. "GB freed so far". */
 function FreedCounter({ bytes, unit }: { bytes: number; unit: (unit: string) => string }) {
   const { value, unit: byteUnit } = bytesParts(bytes);
   return (

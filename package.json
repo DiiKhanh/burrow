@@ -16,6 +16,7 @@
     "test:integration": "bun run fetch:mole && go test -race -tags integration ./...",
     "test:e2e": "playwright test",
     "test:smoke": "go test -count=1 -tags smoke ./e2e/smoke/...",
+    "test:realtrash": "go test -count=1 -tags realtrash ./e2e/realtrash/...",
     "dev:web": "vite",
     "build:web": "vite build"
   },
