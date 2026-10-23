@@ -1,0 +1,89 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+# A tag vX.Y.Z releases the version in mygo.config.ts, and vX.Y.Z-rc.1 makes
+# a pre-release of it; any other tag fails here, before anything is built.
+# The release then needs the whole of CI, and is the DMG of the very app its
+# own smoke test launched, with SHA256SUMS and the install guide of
+# release-notes.md above GitHub's generated notes. Nothing is uploaded for
+# auto-update.
+jobs:
+  # It only reads mygo.config.ts, which needs no Mac.
+  tag:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.tag.outputs.version }}
+      prerelease: ${{ steps.tag.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      # mygo.config.ts imports mygo-cli; Mole is not needed yet.
+      - run: bun install --frozen-lockfile --ignore-scripts
+      - id: tag
+        run: go run ./tools/releasetag "$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+
+  ci:
+    needs: tag
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    needs: [tag, ci]
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.tag.outputs.version }}
+      PRERELEASE: ${{ needs.tag.outputs.prerelease }}
+      # Ad hoc ("-") unless the repository variable MACOS_SIGNING_IDENTITY
+      # names another identity, which a step before the build must then
+      # import into the runner's keychain.
+      SIGNING_IDENTITY: ${{ vars.MACOS_SIGNING_IDENTITY || '-' }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      # Bun appends -sign to the build script, whose last command is mygo build.
+      - name: Build and sign
+        run: |
+          bun run build -sign "$SIGNING_IDENTITY"
+          codesign --verify --deep --strict build/darwin-arm64/Burrow.app
+      - run: bun run test:smoke
+      - name: Collect the assets
+        run: |
+          dmgs=(build/darwin-arm64/*.dmg)
+          if [ "${#dmgs[@]}" -ne 1 ] || [ ! -f "${dmgs[0]}" ]; then
+            echo "want one disk image in build/darwin-arm64, got: ${dmgs[*]}" >&2
+            exit 1
+          fi
+          mkdir release
+          cp "${dmgs[0]}" "release/Burrow-$VERSION-arm64.dmg"
+          cd release && shasum -a 256 -- *.dmg > SHA256SUMS && cat SHA256SUMS
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "$GITHUB_REF_NAME" release/*
+          --verify-tag
+          --prerelease="$PRERELEASE"
+          --generate-notes
+          --notes-file .github/release-notes.md
