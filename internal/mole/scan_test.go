@@ -165,6 +165,99 @@ EOF
 	}
 }
 
+// Without Full Disk Access Mole cannot list ~/.Trash: it lists nothing and
+// says so in one line of its User essentials section.
+func TestScannerReportsTrashUnreadableWhenMoleIsDeniedIt(t *testing.T) {
+	home := t.TempDir()
+	logPath := filepath.Join(home, "Library/Logs/Burrow/scan.log")
+	writeTestFile(t, logPath, "log")
+	bundleDir := t.TempDir()
+	fakeBundle(t, bundleDir)
+	script := `#!/bin/sh
+set -eu
+mkdir -p "$HOME/.config/mole"
+printf '➤ User essentials\n'
+printf '  \033[0;90m◎\033[0m Trash · skipped, grant Full Disk Access to your terminal\n'
+cat > "$HOME/.config/mole/clean-list.txt" <<EOF
+=== User essentials ===
+$HOME/Library/Logs/Burrow/scan.log  # 1B
+EOF
+`
+	if err := os.WriteFile(filepath.Join(bundleDir, MoPath), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	scanner := NewScanner(Bundle{dir: bundleDir}, home, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	result, err := scanner.Scan(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(result.Unreadable, []clean.JunkGroupID{clean.Trash}) {
+		t.Fatalf("unreadable = %v, want [trash]", result.Unreadable)
+	}
+	if len(result.Groups) != 1 || result.Groups[0].ID != clean.LogsSavedState {
+		t.Fatalf("groups = %#v, want only Logs & Saved State", result.Groups)
+	}
+}
+
+func TestScannerReportsNoUnreadableGroupsWhenMoleReadsEverything(t *testing.T) {
+	home := t.TempDir()
+	bundleDir := t.TempDir()
+	fakeBundle(t, bundleDir)
+	script := `#!/bin/sh
+set -eu
+mkdir -p "$HOME/.config/mole"
+: > "$HOME/.config/mole/clean-list.txt"
+`
+	if err := os.WriteFile(filepath.Join(bundleDir, MoPath), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	scanner := NewScanner(Bundle{dir: bundleDir}, home, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	result, err := scanner.Scan(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Unreadable == nil || len(result.Unreadable) != 0 {
+		t.Fatalf("unreadable = %#v, want an empty list", result.Unreadable)
+	}
+}
+
+// Only privacy protection's EPERM makes a group unreadable; EACCES comes from
+// file modes, which Full Disk Access would not fix.
+func TestParseCleanListReportsGroupsPrivacyProtectionKeptFromBeingMeasured(t *testing.T) {
+	home := "/Users/test"
+	input := `=== App caches ===
+/Users/test/Library/Caches/readable  # 1B
+/Users/test/Library/Containers/com.example/Data/Library/Caches  # 1B
+=== Developer tools ===
+/Users/test/Library/Developer/locked  # 1B
+`
+	measure := func(path string) (int64, error) {
+		switch filepath.Base(path) {
+		case "Caches":
+			return 7, &os.PathError{Op: "open", Path: path, Err: syscall.EPERM}
+		case "locked":
+			return 0, &os.PathError{Op: "open", Path: path, Err: syscall.EACCES}
+		}
+		return 42, nil
+	}
+
+	result, err := parseCleanList(home, strings.NewReader(input), slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, measure)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(result.Unreadable, []clean.JunkGroupID{clean.AppCaches}) {
+		t.Fatalf("unreadable = %v, want [app-caches]", result.Unreadable)
+	}
+	if len(result.Groups) != 2 || len(result.Groups[0].Items) != 2 {
+		t.Fatalf("groups = %#v, want both groups with every listed item", result.Groups)
+	}
+	if partial := result.Groups[0].Items[1]; partial.Bytes != 7 {
+		t.Fatalf("partly readable item = %#v, want its 7 readable bytes", partial)
+	}
+}
+
 // Passwordless sudo would let `mo clean --dry-run` preview system paths
 // outside the injected Home, which Burrow never cleans (ADR 0003).
 func TestScannerDeniesMoleSudo(t *testing.T) {

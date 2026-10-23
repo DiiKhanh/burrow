@@ -5,9 +5,11 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -70,9 +72,13 @@ func (s *Scanner) Scan(ctx context.Context, onProgress func(clean.ScanProgress) 
 		return clean.ScanResult{}, fmt.Errorf("starting bundled Mole: %w", err)
 	}
 
+	unreadable := make(map[clean.JunkGroupID]bool)
 	lines := bufio.NewScanner(stdout)
 	for lines.Scan() {
 		line := strings.TrimSpace(lines.Text())
+		if strings.Contains(line, trashDeniedLine) {
+			unreadable[clean.Trash] = true
+		}
 		if section, ok := outputSection(line); ok {
 			rule, mapped := sectionRules[section]
 			if !mapped {
@@ -101,7 +107,7 @@ func (s *Scanner) Scan(ctx context.Context, onProgress func(clean.ScanProgress) 
 	if err != nil {
 		return clean.ScanResult{}, fmt.Errorf("opening Mole clean-list: %w", err)
 	}
-	result, err := parseCleanList(s.home, list, s.logger, onProgress)
+	result, err := parseCleanList(s.home, list, s.logger, onProgress, unreadable, pathBytes)
 	if err != nil {
 		_ = list.Close()
 		return clean.ScanResult{}, err
@@ -119,6 +125,19 @@ func stopCommand(cmd *exec.Cmd) {
 		_ = cmd.Process.Kill()
 	}
 	_ = cmd.Wait()
+}
+
+// trashDeniedLine is how Mole says it could not list ~/.Trash, which macOS
+// refuses without Full Disk Access. Mole prints it in User essentials and
+// stays silent about the other paths it cannot read.
+const trashDeniedLine = "Trash · skipped, grant Full Disk Access"
+
+// deniedByPrivacy is true for macOS privacy protection's refusal, EPERM
+// ("Operation not permitted"). A plain EACCES comes from file modes, which
+// Full Disk Access would not change, so it does not make a group unreadable.
+// SIP also answers EPERM, but it guards no path inside Home.
+func deniedByPrivacy(err error) bool {
+	return errors.Is(err, syscall.EPERM)
 }
 
 func sendProgress(send func(clean.ScanProgress) error, progress clean.ScanProgress) error {
@@ -243,10 +262,23 @@ var groupPolicy = map[clean.JunkGroupID]struct {
 // ParseCleanList translates Mole's clean-list into Burrow's stable Scan
 // contract. Human-readable Mole sizes are deliberately ignored.
 func ParseCleanList(home string, input io.Reader, logger *slog.Logger) (clean.ScanResult, error) {
-	return parseCleanList(home, input, logger, nil)
+	return parseCleanList(home, input, logger, nil, nil, pathBytes)
 }
 
-func parseCleanList(home string, input io.Reader, logger *slog.Logger, onProgress func(clean.ScanProgress) error) (clean.ScanResult, error) {
+// parseCleanList reports, in group order, the groups in unreadable and every
+// group with an item measure could not read in full for privacy protection.
+func parseCleanList(
+	home string,
+	input io.Reader,
+	logger *slog.Logger,
+	onProgress func(clean.ScanProgress) error,
+	unreadable map[clean.JunkGroupID]bool,
+	measure func(string) (int64, error),
+) (clean.ScanResult, error) {
+	unreadable = maps.Clone(unreadable)
+	if unreadable == nil {
+		unreadable = make(map[clean.JunkGroupID]bool)
+	}
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -311,8 +343,13 @@ func parseCleanList(home string, input io.Reader, logger *slog.Logger, onProgres
 			}); err != nil {
 				return clean.ScanResult{}, err
 			}
-			bytes, err := pathBytes(path)
-			if err != nil {
+			bytes, err := measure(path)
+			switch {
+			case deniedByPrivacy(err):
+				// bytes still counts the part privacy protection left readable.
+				logger.Warn("could not read all of junk item", "path", path, "error", err)
+				unreadable[groupID] = true
+			case err != nil:
 				logger.Warn("could not measure junk item", "path", path, "error", err)
 				bytes = 0
 			}
@@ -348,6 +385,12 @@ func parseCleanList(home string, input io.Reader, logger *slog.Logger, onProgres
 			return clean.ScanResult{}, err
 		}
 	}
+	result.Unreadable = make([]clean.JunkGroupID, 0, len(unreadable))
+	for _, groupID := range groupOrder {
+		if unreadable[groupID] {
+			result.Unreadable = append(result.Unreadable, groupID)
+		}
+	}
 	return result, nil
 }
 
@@ -361,6 +404,8 @@ func stableItemID(groupID clean.JunkGroupID, path string) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// pathBytes sizes path. It walks past folders privacy protection refuses,
+// returning the readable total with the first such refusal.
 func pathBytes(path string) (int64, error) {
 	info, err := os.Lstat(path)
 	if err != nil {
@@ -373,7 +418,14 @@ func pathBytes(path string) (int64, error) {
 		return 0, nil
 	}
 	var total int64
+	var refused error
 	err = filepath.WalkDir(path, func(current string, entry os.DirEntry, walkErr error) error {
+		if deniedByPrivacy(walkErr) {
+			if refused == nil {
+				refused = walkErr
+			}
+			return nil
+		}
 		if walkErr != nil {
 			return walkErr
 		}
@@ -386,5 +438,8 @@ func pathBytes(path string) (int64, error) {
 		}
 		return nil
 	})
-	return total, err
+	if err != nil {
+		return total, err
+	}
+	return total, refused
 }

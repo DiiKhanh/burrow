@@ -54,6 +54,7 @@ export const fullScan: ScanResult = {
       ["Library/iTunes/iPhone Software Updates/iPhone15,2_18.1.ipsw", 7.12 * GB],
     ]),
   ],
+  unreadable: [],
 };
 
 /** A path deep enough to overflow any row. */
@@ -71,4 +72,11 @@ export const longScan: ScanResult = {
     ]),
     ...fullScan.groups.slice(1),
   ],
+  unreadable: [],
+};
+
+/** A Scan without Full Disk Access: macOS kept it out of Trash. */
+export const unreadableScan: ScanResult = {
+  groups: fullScan.groups.filter((junk) => junk.id !== "trash"),
+  unreadable: ["trash"],
 };

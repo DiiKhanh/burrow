@@ -6,6 +6,7 @@ import {
   type CleanProgress,
   type CleanReport,
   type JunkGroupID,
+  Privacy,
   type ScanProgress,
   type ScanResult,
 } from "../mygo";
@@ -13,6 +14,7 @@ import { PillButton } from "../shell/PillButton";
 import { strings } from "../strings";
 import { CleaningView, DoneView } from "./CleanRun";
 import type { CleanLayer } from "./CleanStrata";
+import type { OpenFullDiskAccess } from "./FullDiskAccessNotice";
 import { Review } from "./Review";
 import { ScanStrata } from "./ScanStrata";
 
@@ -33,10 +35,14 @@ const startRealClean: StartClean = (ids, onProgress) => Clean.clean([...ids], ne
 
 type Phase = "idle" | "scanning" | "review" | "cleaning" | "done";
 
-type Props = { startScan?: StartScan; startClean?: StartClean };
+type Props = { startScan?: StartScan; startClean?: StartClean; openFullDiskAccess?: OpenFullDiskAccess };
 
 /** The Clean tab: Scan, Review, Clean and Done. */
-export function CleanTab({ startScan = startRealScan, startClean = startRealClean }: Props) {
+export function CleanTab({
+  startScan = startRealScan,
+  startClean = startRealClean,
+  openFullDiskAccess = Privacy.openFullDiskAccess,
+}: Props) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [progress, setProgress] = useState<ScanProgress | null>(null);
   const [groupBytes, setGroupBytes] = useState<Partial<Record<JunkGroupID, number>>>({});
@@ -132,7 +138,9 @@ export function CleanTab({ startScan = startRealScan, startClean = startRealClea
           </button>
         </section>
       )}
-      {phase === "review" && result && <Review result={result} onScanAgain={begin} onClean={clean} />}
+      {phase === "review" && result && (
+        <Review result={result} onScanAgain={begin} onClean={clean} openFullDiskAccess={openFullDiskAccess} />
+      )}
       {phase === "cleaning" && <CleaningView {...cleaning} />}
       {phase === "done" && cleaning.report && <DoneView {...cleaning} report={cleaning.report} onFinish={finish} />}
     </main>

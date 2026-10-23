@@ -22,7 +22,7 @@ const windowBackground = "#1b1f31"
 
 func main() {
 	cleanService, configureClean := service.NewClean()
-	mygo.Bind(cleanService, &service.Status{})
+	mygo.Bind(cleanService, service.NewPrivacy(mygo.Shell.OpenExternal), &service.Status{})
 	mygo.Theme.SetSource(mygo.ThemeDark)
 
 	mygo.App.WhenReady(func() {

@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { CleanProgress, CleanReport, ScanProgress, ScanResult } from "../mygo";
 import { CleanTab, type StartClean, type StartScan } from "./CleanTab";
+import type { OpenFullDiskAccess } from "./FullDiskAccessNotice";
 
 describe("Clean Scan", () => {
   it("starts at the Scan call-to-action and enters Strata scanning", async () => {
@@ -79,6 +80,7 @@ describe("Clean Scan", () => {
             items: [{ id: "late", path: "/late.ipsw", bytes: 99_000_000_000 }],
           },
         ],
+        unreadable: [],
       });
       await Promise.resolve();
     });
@@ -350,6 +352,7 @@ const REVIEW_RESULT: ScanResult = {
       items: [{ id: "firmware", path: "/Users/test/Library/iTunes/iPhone15,2_18.1.ipsw", bytes: 7_000_000_000 }],
     },
   ],
+  unreadable: [],
 };
 
 /** The color bar's segments as [label, width in percent], left to right. */
@@ -360,6 +363,74 @@ function barSegments() {
     .filter(([, width]) => width !== "0");
 }
 
+describe("Clean Review with protected access unavailable", () => {
+  const UNREADABLE: ScanResult = {
+    groups: [
+      {
+        id: "app-caches",
+        removalMethod: "delete",
+        defaultSelected: true,
+        items: [{ id: "cache", path: "/Users/test/Library/Caches/Burrow", bytes: 1_000_000 }],
+      },
+    ],
+    unreadable: ["app-caches", "trash"],
+  };
+
+  it("marks unreadable junk groups and still offers the readable items", async () => {
+    await review(UNREADABLE);
+
+    const groups = screen.getByRole("list", { name: "Junk groups" });
+    const [caches, trash] = within(groups).getAllByRole("listitem") as [HTMLElement, HTMLElement];
+    expect(within(caches).getByText("Protected access unavailable")).toBeVisible();
+    expect(within(trash).getByText("Trash")).toBeVisible();
+    expect(within(trash).getByText("Protected access unavailable")).toBeVisible();
+    expect(within(trash).queryByRole("checkbox")).not.toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "App Caches" })).toBeChecked();
+    expect(screen.getByRole("button", { name: "Clean 1 item →" })).toBeEnabled();
+  });
+
+  it("says nothing about Full Disk Access when the Scan read everything", async () => {
+    await review({ ...UNREADABLE, unreadable: [] });
+
+    expect(screen.queryByText("Protected access unavailable")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Open System Settings" })).not.toBeInTheDocument();
+  });
+
+  it("opens Full Disk Access in System Settings", async () => {
+    const openFullDiskAccess = vi.fn(async () => "full-disk-access" as const);
+    const { user } = await review(UNREADABLE, openFullDiskAccess);
+
+    await user.click(screen.getByRole("button", { name: "Open System Settings" }));
+
+    expect(openFullDiskAccess).toHaveBeenCalledOnce();
+    expect(await screen.findByText("Turn on Burrow in Full Disk Access, then scan again.")).toBeVisible();
+  });
+
+  it("walks the user to Full Disk Access when only Privacy & Security opened", async () => {
+    const { user } = await review(UNREADABLE, async () => "privacy-security");
+
+    await user.click(screen.getByRole("button", { name: "Open System Settings" }));
+
+    expect(
+      await screen.findByText("In Privacy & Security, scroll to Full Disk Access, turn on Burrow, then scan again."),
+    ).toBeVisible();
+  });
+
+  it("gives the manual path when System Settings did not open", async () => {
+    const { user } = await review(UNREADABLE, async () => {
+      throw new Error("no application can open it");
+    });
+
+    await user.click(screen.getByRole("button", { name: "Open System Settings" }));
+
+    expect(
+      await screen.findByText(
+        "System Settings did not open. Open it from the Apple menu, go to Privacy & Security › Full Disk Access, and turn on Burrow.",
+      ),
+    ).toBeVisible();
+  });
+});
+
 /** Matches the one element whose whole text is text, even split across spans. */
 function wholeText(text: string) {
   return (_: string, element: Element | null) =>
@@ -367,11 +438,11 @@ function wholeText(text: string) {
 }
 
 /** Scans to completion and lands on Review with result. */
-async function review(result: ScanResult) {
+async function review(result: ScanResult, openFullDiskAccess?: OpenFullDiskAccess) {
   const scan = controlledScan();
   const clean = controlledClean();
   const user = userEvent.setup();
-  render(<CleanTab startScan={scan.start} startClean={clean.start} />);
+  render(<CleanTab startScan={scan.start} startClean={clean.start} openFullDiskAccess={openFullDiskAccess} />);
   await user.click(screen.getByRole("button", { name: "Start scan" }));
   await act(async () => {
     scan.resolve(result);

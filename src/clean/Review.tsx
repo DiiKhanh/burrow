@@ -3,7 +3,8 @@ import { bytesParts, formatBytes } from "../format";
 import type { JunkGroup, JunkGroupID, ScanResult } from "../mygo";
 import { PillButton } from "../shell/PillButton";
 import { strings } from "../strings";
-import { junkGroupCatalog } from "./catalog";
+import { JUNK_GROUP_ORDER, junkGroupCatalog } from "./catalog";
+import { FullDiskAccessNotice, type OpenFullDiskAccess } from "./FullDiskAccessNotice";
 import { SelectionBar } from "./SelectionBar";
 import {
   defaultSelection,
@@ -22,10 +23,24 @@ type Props = {
   onScanAgain: () => void;
   /** Starts Clean with the selected junk item ids. */
   onClean: (ids: string[]) => void;
+  openFullDiskAccess: OpenFullDiskAccess;
 };
 
+type ReviewRow = { id: JunkGroupID; group: JunkGroup | null; unreadable: boolean };
+
+/** Every junk group Review lists, in group order: found ones, then unreadable ones without items in their place. */
+function reviewRows(result: ScanResult): ReviewRow[] {
+  const found = new Map(result.groups.map((group) => [group.id, group]));
+  const unreadable = new Set(result.unreadable);
+  return JUNK_GROUP_ORDER.flatMap((id): ReviewRow[] => {
+    const group = found.get(id);
+    if (group) return [{ id, group, unreadable: unreadable.has(id) }];
+    return unreadable.has(id) ? [{ id, group: null, unreadable: true }] : [];
+  });
+}
+
 /** Step 2: pick the junk groups and junk items to clean. */
-export function Review({ result, onScanAgain, onClean }: Props) {
+export function Review({ result, onScanAgain, onClean, openFullDiskAccess }: Props) {
   const [selection, setSelection] = useState<Selection>(() => defaultSelection(result));
   const [hovered, setHovered] = useState<JunkGroupID | null>(null);
   const shares = result.groups.map((group) => ({ id: group.id, bytes: selectedBytes(group, selection) }));
@@ -44,18 +59,24 @@ export function Review({ result, onScanAgain, onClean }: Props) {
         aria-label={strings.clean.review.groups}
         className="w-full flex-1 divide-y divide-line overflow-y-auto rounded-card border border-line bg-surface"
       >
-        {result.groups.map((group) => (
-          <GroupRow
-            key={group.id}
-            group={group}
-            selection={selection}
-            hovered={hovered === group.id}
-            onHover={setHovered}
-            onSelectGroup={(on) => setSelection((current) => setGroup(current, group, on))}
-            onToggleItem={(itemId) => setSelection((current) => toggleItem(current, itemId))}
-          />
-        ))}
+        {reviewRows(result).map(({ id, group, unreadable }) =>
+          group ? (
+            <GroupRow
+              key={id}
+              group={group}
+              unreadable={unreadable}
+              selection={selection}
+              hovered={hovered === id}
+              onHover={setHovered}
+              onSelectGroup={(on) => setSelection((current) => setGroup(current, group, on))}
+              onToggleItem={(itemId) => setSelection((current) => toggleItem(current, itemId))}
+            />
+          ) : (
+            <UnreadableRow key={id} id={id} />
+          ),
+        )}
       </ul>
+      {result.unreadable.length > 0 && <FullDiskAccessNotice openFullDiskAccess={openFullDiskAccess} />}
       <div className="flex w-full items-center justify-between">
         <button type="button" onClick={onScanAgain} className="text-ink-muted text-note hover:text-ink">
           {strings.clean.review.scanAgain}
@@ -68,8 +89,33 @@ export function Review({ result, onScanAgain, onClean }: Props) {
   );
 }
 
+/** A junk group macOS kept the Scan out of entirely: nothing to select. */
+function UnreadableRow({ id }: { id: JunkGroupID }) {
+  const { name, description, dot } = junkGroupCatalog[id];
+  return (
+    <li className="flex items-center gap-3 px-4 py-3">
+      {/* Holds the checkbox's place so names line up with the other rows. */}
+      <span aria-hidden="true" className="size-4.5 shrink-0" />
+      <span aria-hidden="true" className={`size-2 shrink-0 rounded-full opacity-40 ${dot}`} />
+      <span className="min-w-0 flex-1">
+        <span className="block font-medium text-ink-muted text-note">
+          {name}
+          <UnreadableLabel />
+        </span>
+        <span className="block truncate text-caption text-ink-faint">{description}</span>
+      </span>
+      <span className="font-mono text-ink-faint text-note">{strings.unavailable}</span>
+    </li>
+  );
+}
+
+function UnreadableLabel() {
+  return <span className="ml-2 font-normal text-caption text-warn">{strings.clean.review.unreadable}</span>;
+}
+
 type GroupRowProps = {
   group: JunkGroup;
+  unreadable: boolean;
   selection: Selection;
   hovered: boolean;
   onHover: (id: JunkGroupID | null) => void;
@@ -77,7 +123,7 @@ type GroupRowProps = {
   onToggleItem: (itemId: string) => void;
 };
 
-function GroupRow({ group, selection, hovered, onHover, onSelectGroup, onToggleItem }: GroupRowProps) {
+function GroupRow({ group, unreadable, selection, hovered, onHover, onSelectGroup, onToggleItem }: GroupRowProps) {
   const [open, setOpen] = useState(false);
   const { name, description, dot } = junkGroupCatalog[group.id];
   return (
@@ -110,6 +156,7 @@ function GroupRow({ group, selection, hovered, onHover, onSelectGroup, onToggleI
                   {strings.clean.review.movesToTrash}
                 </span>
               )}
+              {unreadable && <UnreadableLabel />}
             </span>
             <span className="block truncate text-caption text-ink-faint">{description}</span>
           </span>
