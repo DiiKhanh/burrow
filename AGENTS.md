@@ -11,3 +11,7 @@ Uses the five default triage labels (`needs-triage`, `needs-info`, `ready-for-ag
 ### Domain docs
 
 Single-context: one `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+
+### MyGo
+
+MyGo (the app framework) docs are in `$(go list -m -f '{{.Dir}}' github.com/egoist/mygo)/docs/`; `mygo.config.ts` types are in `node_modules/mygo-cli/index.d.ts`.
