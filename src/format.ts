@@ -16,8 +16,11 @@ export function formatBytes(bytes: number | null): string {
   return `${value} ${unit}`;
 }
 
-/** formatBytes as its number and unit, for a big number with a smaller unit: "12.6" and "GB". */
-export function bytesParts(bytes: number): { value: string; unit: string } {
+/** A formatted quantity split for display: "12.6" and "GB". */
+export type SizeParts = { value: string; unit: string };
+
+/** formatBytes as its number and unit, for a big number with a smaller unit. */
+export function bytesParts(bytes: number): SizeParts {
   if (Math.round(bytes) < STEP) return { value: String(Math.max(0, Math.round(bytes))), unit: BYTE };
   return scaleParts(bytes / STEP, BYTE_MULTIPLES);
 }
@@ -48,7 +51,7 @@ function scale(value: number, units: readonly string[]): string {
   return `${parts.value} ${parts.unit}`;
 }
 
-function scaleParts(value: number, units: readonly string[]): { value: string; unit: string } {
+function scaleParts(value: number, units: readonly string[]): SizeParts {
   let unit = 0;
   let scaled = value;
   while (roundToSignificant(scaled) >= STEP && unit < units.length - 1) {

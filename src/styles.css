@@ -126,6 +126,20 @@
   }
 }
 
+/* A Review color bar segment: it slides to its new share as the selection changes. */
+.selection-segment {
+  transition:
+    x 300ms ease,
+    width 300ms ease,
+    opacity 150ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .selection-segment {
+    transition: none;
+  }
+}
+
 /* A Radix checkbox that is checked or partly checked. */
 @custom-variant ticked (&:is([data-state="checked"], [data-state="indeterminate"]));
 

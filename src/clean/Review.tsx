@@ -25,9 +25,10 @@ type Props = {
 /** Step 2: pick the junk groups and junk items to clean. */
 export function Review({ result, onScanAgain }: Props) {
   const [selection, setSelection] = useState<Selection>(() => defaultSelection(result));
-  const [focus, setFocus] = useState<JunkGroupID | null>(null);
+  const [hovered, setHovered] = useState<JunkGroupID | null>(null);
   const shares = result.groups.map((group) => ({ id: group.id, bytes: selectedBytes(group, selection) }));
-  const { value, unit } = bytesParts(shares.reduce((sum, share) => sum + share.bytes, 0));
+  const total = shares.reduce((sum, share) => sum + share.bytes, 0);
+  const { value, unit } = bytesParts(total);
 
   return (
     <>
@@ -35,7 +36,7 @@ export function Review({ result, onScanAgain }: Props) {
         <p className="tabular font-bold text-metric leading-10">
           {value} <span className="text-ink-muted text-subhead">{strings.clean.review.selected(unit)}</span>
         </p>
-        <SelectionBar shares={shares} focus={focus} onFocus={setFocus} />
+        <SelectionBar shares={shares} total={total} hovered={hovered} onHover={setHovered} />
       </div>
       <ul
         aria-label={strings.clean.review.groups}
@@ -46,8 +47,8 @@ export function Review({ result, onScanAgain }: Props) {
             key={group.id}
             group={group}
             selection={selection}
-            focused={focus === group.id}
-            onFocus={setFocus}
+            hovered={hovered === group.id}
+            onHover={setHovered}
             onSelectGroup={(on) => setSelection((current) => setGroup(current, group, on))}
             onToggleItem={(itemId) => setSelection((current) => toggleItem(current, itemId))}
           />
@@ -66,29 +67,32 @@ export function Review({ result, onScanAgain }: Props) {
 type GroupRowProps = {
   group: JunkGroup;
   selection: Selection;
-  focused: boolean;
-  onFocus: (id: JunkGroupID | null) => void;
+  hovered: boolean;
+  onHover: (id: JunkGroupID | null) => void;
   onSelectGroup: (on: boolean) => void;
   onToggleItem: (itemId: string) => void;
 };
 
-function GroupRow({ group, selection, focused, onFocus, onSelectGroup, onToggleItem }: GroupRowProps) {
+function GroupRow({ group, selection, hovered, onHover, onSelectGroup, onToggleItem }: GroupRowProps) {
   const [open, setOpen] = useState(false);
   const { name, description, dot } = junkGroupCatalog[group.id];
   return (
     <li
-      onMouseEnter={() => onFocus(group.id)}
-      onMouseLeave={() => onFocus(null)}
-      className={focused ? "bg-surface-raised" : undefined}
+      onMouseEnter={() => onHover(group.id)}
+      onMouseLeave={() => onHover(null)}
+      className={hovered ? "bg-surface-raised" : undefined}
     >
-      <div className="flex items-center gap-3 px-4 py-3">
-        <TriCheckbox label={name} state={groupState(group, selection)} onChange={onSelectGroup} />
+      {/* The expand button stretches over the whole row; the checkbox sits above it. */}
+      <div className="relative flex items-center gap-3 px-4 py-3">
+        <span className="relative z-10 flex">
+          <TriCheckbox label={name} state={groupState(group, selection)} onChange={onSelectGroup} />
+        </span>
         <button
           type="button"
           aria-label={strings.clean.review.showItems(name)}
           aria-expanded={open}
           onClick={() => setOpen((current) => !current)}
-          className="flex min-w-0 flex-1 items-center gap-3 text-left"
+          className="flex min-w-0 flex-1 items-center gap-3 text-left after:absolute after:inset-0"
         >
           <span aria-hidden="true" className={`size-2 shrink-0 rounded-full ${dot}`} />
           <span className="min-w-0 flex-1">

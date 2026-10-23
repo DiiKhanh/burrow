@@ -48,7 +48,7 @@ export const strings = {
       groups: "Junk groups",
       /** The unit after the big number: "GB selected". */
       selected: (unit: string) => `${unit} selected`,
-      share: "Selection by junk group",
+      breakdown: "Selection by junk group",
       /** One color bar segment: "App Caches, 1.2 GB". */
       segment: (name: string, size: string) => `${name}, ${size}`,
       /** "3/5": selected items of all the group's items. */

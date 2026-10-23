@@ -225,7 +225,9 @@ const REVIEW_RESULT: ScanResult = {
 /** The color bar's segments as [label, width in percent], left to right. */
 function barSegments() {
   const bar = screen.getByRole("img", { name: "Selection by junk group" });
-  return [...bar.querySelectorAll("rect")].map((segment) => [segment.textContent, segment.getAttribute("width")]);
+  return [...bar.querySelectorAll("rect")]
+    .map((segment) => [segment.textContent, segment.getAttribute("width")])
+    .filter(([, width]) => width !== "0");
 }
 
 /** Matches the one element whose whole text is text, even split across spans. */

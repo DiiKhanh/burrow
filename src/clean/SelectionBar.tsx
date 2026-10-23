@@ -13,45 +13,45 @@ export type Share = { id: JunkGroupID; bytes: number };
 type Props = {
   /** Selected bytes per junk group, in list order. */
   shares: readonly Share[];
+  /** All selected bytes: the sum of shares. */
+  total: number;
   /** The group under the pointer, shown at full strength while the rest dim. */
-  focus: JunkGroupID | null;
-  onFocus: (id: JunkGroupID | null) => void;
+  hovered: JunkGroupID | null;
+  onHover: (id: JunkGroupID | null) => void;
 };
 
-/** How the selection splits across junk groups, one colored segment per group. */
-export function SelectionBar({ shares, focus, onFocus }: Props) {
-  const total = shares.reduce((sum, share) => sum + share.bytes, 0);
-  const widths = shares
-    .filter((share) => share.bytes > 0)
-    .map((share) => ({ share, width: (share.bytes / total) * WIDTH }));
-  // Each segment starts where the ones before it end.
-  const segments = widths.map((segment, index) => ({
-    ...segment,
-    x: widths.slice(0, index).reduce((sum, before) => sum + before.width, 0),
-  }));
+/**
+ * How the selection splits across junk groups, one colored segment per
+ * group. Unselected groups keep a zero-width segment, so segments grow and
+ * shrink rather than pop in and out.
+ */
+export function SelectionBar({ shares, total, hovered, onHover }: Props) {
+  const widths = shares.map((share) => (total > 0 ? (share.bytes / total) * WIDTH : 0));
 
   return (
     <svg
       role="img"
-      aria-label={strings.clean.review.share}
+      aria-label={strings.clean.review.breakdown}
       viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
       preserveAspectRatio="none"
       className="mt-4 block h-3 w-full overflow-hidden rounded-full bg-surface-sunken"
     >
-      {segments.map(({ share, x, width }) => {
+      {shares.map((share, index) => {
         const { name, fill } = junkGroupCatalog[share.id];
-        const dimmed = focus !== null && focus !== share.id;
+        const dimmed = hovered !== null && hovered !== share.id;
+        // Each segment starts where the ones before it end.
+        const x = widths.slice(0, index).reduce((sum, width) => sum + width, 0);
         return (
           // biome-ignore lint/a11y/noStaticElementInteractions: hover only mirrors the list row, which carries the controls.
           <rect
             key={share.id}
             x={coordinate(x)}
             y={0}
-            width={coordinate(width)}
+            width={coordinate(widths[index] ?? 0)}
             height={HEIGHT}
-            className={`${fill} motion-safe:transition-opacity ${dimmed ? "opacity-35" : ""}`}
-            onMouseEnter={() => onFocus(share.id)}
-            onMouseLeave={() => onFocus(null)}
+            className={`selection-segment ${fill} ${dimmed ? "opacity-35" : ""}`}
+            onMouseEnter={() => onHover(share.id)}
+            onMouseLeave={() => onHover(null)}
           >
             <title>{strings.clean.review.segment(name, formatBytes(share.bytes))}</title>
           </rect>

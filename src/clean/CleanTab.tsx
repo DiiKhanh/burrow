@@ -106,21 +106,26 @@ export function CleanTab({ startScan = startRealScan }: Props) {
 /** The step each phase belongs to: Scan, Review, Clean, Done. */
 const STEP: Record<Phase, number> = { idle: 0, scanning: 0, review: 1 };
 
+type StepState = "done" | "current" | "ahead";
+
+const BADGE: Record<StepState, string> = {
+  done: "bg-ok text-pill-ink",
+  current: "bg-pill text-pill-ink",
+  ahead: "border border-line-strong text-ink-faint",
+};
+
+function stepState(index: number, current: number): StepState {
+  if (index < current) return "done";
+  return index === current ? "current" : "ahead";
+}
+
 function Stepper({ phase }: { phase: Phase }) {
   const current = STEP[phase];
   return (
     <ol aria-label={strings.clean.steps.label} className="flex items-center gap-2 font-mono text-caption">
       {strings.clean.steps.items.map((step, index) => (
         <li key={step} aria-current={index === current ? "step" : undefined} className="flex items-center gap-2">
-          <span
-            className={`grid size-5 place-items-center rounded-full ${
-              index < current
-                ? "bg-ok text-pill-ink"
-                : index === current
-                  ? "bg-pill text-pill-ink"
-                  : "border border-line-strong text-ink-faint"
-            }`}
-          >
+          <span className={`grid size-5 place-items-center rounded-full ${BADGE[stepState(index, current)]}`}>
             {index < current ? strings.clean.steps.done : index + 1}
           </span>
           <span className={index === current ? "text-ink" : "text-ink-faint"}>{step}</span>

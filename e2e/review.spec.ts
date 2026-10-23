@@ -43,6 +43,21 @@ test("selects single junk items and highlights a group in the color bar", async 
   await expect(page.getByText("14.3 GB selected")).toBeVisible();
 });
 
+test("expands a junk group from anywhere on its row, the checkbox aside", async ({ page }) => {
+  await review(page);
+  const expand = page.getByRole("button", { name: "Trash items" });
+  const row = page.getByRole("listitem").filter({ has: expand }).locator("div").first();
+
+  // The row's top-left padding, outside the button's own content.
+  await row.click({ position: { x: 6, y: 4 } });
+  await expect(expand).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByRole("checkbox", { name: "/Users/test/.Trash" })).toBeVisible();
+
+  await page.getByRole("checkbox", { name: "Trash", exact: true }).click();
+  await expect(page.getByRole("checkbox", { name: "Trash", exact: true })).not.toBeChecked();
+  await expect(expand).toHaveAttribute("aria-expanded", "true");
+});
+
 test("disables Clean once nothing is selected", async ({ page }) => {
   await review(page);
   for (const name of ["App Caches", "Browsers", "Logs & Saved State", "Trash", "App Leftovers"]) {

@@ -29,9 +29,8 @@ export function TriCheckbox({ label, state, onChange }: Props) {
 function CheckIcon() {
   return (
     <svg
-      width="11"
-      height="11"
       viewBox="0 0 12 12"
+      className="size-2.75"
       fill="none"
       stroke="currentColor"
       strokeWidth="2.2"
@@ -47,9 +46,8 @@ function CheckIcon() {
 function DashIcon() {
   return (
     <svg
-      width="10"
-      height="10"
       viewBox="0 0 12 12"
+      className="size-2.5"
       stroke="currentColor"
       strokeWidth="2.2"
       strokeLinecap="round"
