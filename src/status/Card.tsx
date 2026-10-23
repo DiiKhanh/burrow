@@ -56,12 +56,12 @@ export function Chip({ children }: { children: ReactNode }) {
   );
 }
 
-/** A card's big number with its unit, e.g. "30 %". */
+/** A card's big number with its unit, e.g. "30 %", on one line: a narrow card cuts the unit short. */
 export function Metric({ value, unit }: { value: string; unit?: string }) {
   return (
-    <p className="tabular font-bold text-metric">
-      <span>{value}</span>
-      {unit !== undefined && <span className="ml-1 font-semibold text-ink-muted text-unit">{unit}</span>}
+    <p className="tabular flex min-w-0 items-baseline font-bold text-metric">
+      <span className="shrink-0">{value}</span>
+      {unit !== undefined && <span className="ml-1 truncate font-semibold text-ink-muted text-unit">{unit}</span>}
     </p>
   );
 }
