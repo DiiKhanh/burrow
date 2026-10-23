@@ -164,6 +164,38 @@ EOF
 	}
 }
 
+// Passwordless sudo would let `mo clean --dry-run` preview system paths
+// outside the injected Home, which Burrow never cleans (ADR 0003).
+func TestScannerDeniesMoleSudo(t *testing.T) {
+	home := t.TempDir()
+	bundleDir := t.TempDir()
+	fakeBundle(t, bundleDir)
+	script := `#!/bin/sh
+set -eu
+command -v sudo > "$HOME/sudo-path"
+test "$(command -v sudo)" != /usr/bin/sudo
+if sudo -n -v; then exit 1; fi
+if sudo -n true; then exit 1; fi
+mkdir -p "$HOME/.config/mole"
+: > "$HOME/.config/mole/clean-list.txt"
+`
+	if err := os.WriteFile(filepath.Join(bundleDir, MoPath), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	scanner := NewScanner(Bundle{dir: bundleDir}, home, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if _, err := scanner.Scan(context.Background(), nil); err != nil {
+		t.Fatalf("Mole reached a working sudo: %v", err)
+	}
+	shim, err := os.ReadFile(filepath.Join(home, "sudo-path"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(strings.TrimSpace(string(shim))); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("sudo shim %s outlived the Scan: %v", shim, err)
+	}
+}
+
 func TestParseCleanListMapsSafeJunkAndMeasuresTheFilesystem(t *testing.T) {
 	home := t.TempDir()
 	if _, err := testhome.Generate(home); err != nil {
@@ -270,7 +302,7 @@ func TestParseCleanListMapsSafeJunkAndMeasuresTheFilesystem(t *testing.T) {
 		}
 	}
 	coveredSections := make(map[string]bool)
-	for _, line := range strings.Split(input, "\n") {
+	for line := range strings.SplitSeq(input, "\n") {
 		if match := sectionLine.FindStringSubmatch(line); match != nil {
 			coveredSections[match[1]] = true
 		}

@@ -51,7 +51,16 @@ func (s *Scanner) Scan(ctx context.Context, onProgress func(clean.ScanProgress) 
 		return err
 	}
 	cmd.WaitDelay = 2 * time.Second
-	cmd.Env = scanEnvironment(os.Environ(), s.home)
+	shimDir, err := sudoDenyingDir()
+	if err != nil {
+		return clean.ScanResult{}, err
+	}
+	defer func() {
+		if err := os.RemoveAll(shimDir); err != nil {
+			s.logger.Warn("could not remove sudo shim", "path", shimDir, "error", err)
+		}
+	}()
+	cmd.Env = scanEnvironment(os.Environ(), s.home, shimDir)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return clean.ScanResult{}, fmt.Errorf("reading Mole output: %w", err)
@@ -121,8 +130,8 @@ func sendProgress(send func(clean.ScanProgress) error, progress clean.ScanProgre
 
 func outputSection(line string) (string, bool) {
 	for _, marker := range []string{"➤ ", "=== "} {
-		if index := strings.Index(line, marker); index >= 0 {
-			section := strings.TrimSpace(line[index+len(marker):])
+		if _, after, found := strings.Cut(line, marker); found {
+			section := strings.TrimSpace(after)
 			section = strings.TrimSuffix(section, " ===")
 			return section, section != ""
 		}
@@ -130,12 +139,30 @@ func outputSection(line string) (string, bool) {
 	return "", false
 }
 
-func scanEnvironment(environ []string, home string) []string {
+// sudoShim refuses every call, as `sudo -n` does without cached credentials.
+const sudoShim = "#!/bin/sh\nexit 1\n"
+
+// sudoDenyingDir makes a directory whose only entry is a refusing `sudo`.
+// Mole previews system paths whenever `sudo -n` succeeds, which passwordless
+// sudo always allows; Burrow's Scan stays in the injected Home (ADR 0003).
+func sudoDenyingDir() (string, error) {
+	dir, err := os.MkdirTemp("", "burrow-nosudo-")
+	if err != nil {
+		return "", fmt.Errorf("creating sudo shim: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "sudo"), []byte(sudoShim), 0o755); err != nil {
+		_ = os.RemoveAll(dir)
+		return "", fmt.Errorf("creating sudo shim: %w", err)
+	}
+	return dir, nil
+}
+
+func scanEnvironment(environ []string, home, shimDir string) []string {
 	values := map[string]string{
 		"HOME":   home,
 		"LC_ALL": "C",
 		"LANG":   "C",
-		"PATH":   "/usr/bin:/bin:/usr/sbin:/sbin",
+		"PATH":   shimDir + ":/usr/bin:/bin:/usr/sbin:/sbin",
 		"TERM":   "dumb",
 	}
 	for _, entry := range environ {
