@@ -20,15 +20,3 @@ test("shows indeterminate progress and cancels the Scan", async ({ page }) => {
   await page.getByRole("button", { name: "Cancel" }).click();
   await expect(page.getByRole("button", { name: "Start scan" })).toBeVisible();
 });
-
-test("finishes with translated junk groups and sizes", async ({ page }) => {
-  await page.goto("/?scan=complete");
-  await page.getByRole("button", { name: "Start scan" }).click();
-
-  await expect(page.getByText("8.2 GB found")).toBeVisible();
-  await expect(page.getByText("Temporary files apps rebuild on next launch.")).toBeVisible();
-  await expect(page.getByText("Downloaded iPhone and iPad firmware files.")).toBeVisible();
-  await expect(page.getByText("1.2 GB")).toBeVisible();
-  await expect(page.getByText("7 GB")).toBeVisible();
-  await expect(page.getByText("Device backups & firmware")).toHaveCount(0);
-});

@@ -40,6 +40,16 @@
   --color-warn: #f5b94a;
   --color-danger: #ff6b61;
 
+  /* Junk groups, in the Review color bar and dots. */
+  --color-group-app-caches: #9cc9ff;
+  --color-group-browsers: #4fd1c5;
+  --color-group-logs-saved-state: #f2b544;
+  --color-group-trash: #5bd38a;
+  --color-group-developer-tools: #b49cff;
+  --color-group-virtualization: #f28fb8;
+  --color-group-app-leftovers: #e6cfa0;
+  --color-group-device-firmware: #ff6b61;
+
   /* Status metrics. */
   --color-cpu: #4fd1c5;
   --color-mem: #f2b544;
@@ -50,6 +60,8 @@
   --text-hero--line-height: 1;
   --text-metric: 2.25rem;
   --text-metric--line-height: 1;
+  --text-title: 1.875rem;
+  --text-title--line-height: 2.25rem;
   --text-button: 0.9375rem;
   --text-button--line-height: 1.5;
   --text-tab: 0.8125rem;
@@ -58,6 +70,8 @@
   --text-body--line-height: 1.25rem;
   --text-unit: 1rem;
   --text-unit--line-height: 1.5;
+  --text-subhead: 1.25rem;
+  --text-subhead--line-height: 1.75rem;
   --text-note: 0.875rem;
   --text-note--line-height: 1.25rem;
   --text-caption: 0.75rem;
@@ -70,8 +84,12 @@
   /* Status bento: two rows of cards, the first column wider. */
   --spacing-bento-row: 178px;
 
+  /* The Clean column. */
+  --container-clean: 680px;
+
   --radius-card: 14px;
   --radius-window: 18px;
+  --radius-check: 5px;
 
   --shadow-pill: 0 8px 30px rgb(0 0 0 / 0.35);
 }
@@ -107,6 +125,23 @@
     background-position-x: 180%;
   }
 }
+
+/* A Review color bar segment: it slides to its new share as the selection changes. */
+.selection-segment {
+  transition:
+    x 300ms ease,
+    width 300ms ease,
+    opacity 150ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .selection-segment {
+    transition: none;
+  }
+}
+
+/* A Radix checkbox that is checked or partly checked. */
+@custom-variant ticked (&:is([data-state="checked"], [data-state="indeterminate"]));
 
 /* Drags the window, as a title bar does; buttons inside stay clickable. */
 @utility drag-region {

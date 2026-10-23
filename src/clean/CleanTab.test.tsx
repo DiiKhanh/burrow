@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { ScanProgress, ScanResult } from "../mygo";
@@ -86,52 +86,190 @@ describe("Clean Scan", () => {
     expect(screen.getByRole("button", { name: "Start scan" })).toBeVisible();
     expect(screen.queryByText("99 GB found")).not.toBeInTheDocument();
   });
+});
 
-  it("finishes with translated junk groups and their recomputed sizes", async () => {
-    const scan = controlledScan();
-    const user = userEvent.setup();
-    render(<CleanTab startScan={scan.start} />);
-    await user.click(screen.getByRole("button", { name: "Start scan" }));
+describe("Clean Review", () => {
+  it("opens with the default junk groups selected and their total", async () => {
+    await review(REVIEW_RESULT);
 
-    await act(async () => {
-      scan.resolve({
-        groups: [
-          {
-            id: "app-caches",
-            removalMethod: "delete",
-            defaultSelected: true,
-            items: [{ id: "cache", path: "/Users/test/Library/Caches/Burrow", bytes: 1_200_000_000 }],
-          },
-          {
-            id: "device-firmware",
-            removalMethod: "move-to-trash",
-            defaultSelected: false,
-            items: [{ id: "firmware", path: "/Users/test/Library/iTunes/Burrow.ipsw", bytes: 7_000_000_000 }],
-          },
-        ],
-      });
-      await Promise.resolve();
-    });
-
-    expect(screen.getByText("8.2 GB found")).toBeVisible();
+    expect(screen.getByText(wholeText("1.65 GB selected"))).toBeVisible();
+    expect(screen.getByRole("checkbox", { name: "App Caches" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "App Leftovers" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Developer Tools" })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Device Firmware" })).not.toBeChecked();
     expect(screen.getByText("Temporary files apps rebuild on next launch.")).toBeVisible();
     expect(screen.getByText("Downloaded iPhone and iPad firmware files.")).toBeVisible();
-    expect(screen.getByText("1.2 GB")).toBeVisible();
-    expect(screen.getByText("7 GB")).toBeVisible();
     expect(screen.queryByText("Device backups & firmware")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Clean 3 items →" })).toBeEnabled();
+  });
+
+  it("selects and clears whole junk groups", async () => {
+    const { user } = await review(REVIEW_RESULT);
+
+    await user.click(screen.getByRole("checkbox", { name: "Developer Tools" }));
+    expect(screen.getByRole("checkbox", { name: "Developer Tools" })).toBeChecked();
+    expect(screen.getByText(wholeText("4.65 GB selected"))).toBeVisible();
+    expect(screen.getByRole("button", { name: "Clean 4 items →" })).toBeVisible();
+
+    await user.click(screen.getByRole("checkbox", { name: "App Caches" }));
+    expect(screen.getByRole("checkbox", { name: "App Caches" })).not.toBeChecked();
+    expect(screen.getByText(wholeText("3.25 GB selected"))).toBeVisible();
+    expect(screen.getByRole("button", { name: "Clean 2 items →" })).toBeVisible();
+  });
+
+  it("labels the junk groups that move to Trash", async () => {
+    await review(REVIEW_RESULT);
+    const rows = screen.getAllByRole("listitem");
+
+    const labelled = rows.filter((row) => row.textContent?.includes("moves to Trash"));
+    expect(labelled.map((row) => row.querySelector("button[aria-expanded]")?.getAttribute("aria-label"))).toEqual([
+      "App Leftovers items",
+      "Device Firmware items",
+    ]);
+  });
+
+  it("marks Scan done and Review current, and scans again from the footer", async () => {
+    const { user, scan } = await review(REVIEW_RESULT);
+    const steps = screen.getByRole("list", { name: "Clean progress" });
+
+    expect(within(steps).getByText("Review").closest("li")).toHaveAttribute("aria-current", "step");
+    expect(within(steps).getByText("Scan").closest("li")).toHaveTextContent("✓Scan");
+
+    await user.click(screen.getByRole("button", { name: "← Scan again" }));
+    expect(screen.getByRole("status", { name: "Scan progress" })).toBeVisible();
+    expect(scan.starts).toBe(2);
+  });
+
+  it("splits the color bar by selected junk group", async () => {
+    const { user } = await review(REVIEW_RESULT);
+
+    // 1.4 GB and 250 MB of 1.65 GB, in percent of the bar.
+    expect(barSegments()).toEqual([
+      ["App Caches, 1.4 GB", "84.8"],
+      ["App Leftovers, 250 MB", "15.2"],
+    ]);
+
+    await user.click(screen.getByRole("checkbox", { name: "Developer Tools" }));
+    // 1.4 GB, 3 GB and 250 MB of 4.65 GB.
+    expect(barSegments()).toEqual([
+      ["App Caches, 1.4 GB", "30.1"],
+      ["Developer Tools, 3 GB", "64.5"],
+      ["App Leftovers, 250 MB", "5.4"],
+    ]);
+
+    await user.click(screen.getByRole("checkbox", { name: "App Caches" }));
+    await user.click(screen.getByRole("checkbox", { name: "App Leftovers" }));
+    await user.click(screen.getByRole("checkbox", { name: "Developer Tools" }));
+    expect(barSegments()).toEqual([]);
+    expect(screen.getByText(wholeText("0 B selected"))).toBeVisible();
+    expect(screen.getByRole("button", { name: "Clean 0 items →" })).toBeDisabled();
+  });
+
+  it("keeps single junk items, leaving their group partly selected", async () => {
+    const { user } = await review(REVIEW_RESULT);
+    const group = screen.getByRole("checkbox", { name: "App Caches" });
+
+    await user.click(screen.getByRole("button", { name: "App Caches items" }));
+    const slack = screen.getByRole("checkbox", { name: "/Users/test/Library/Caches/com.tinyspeck.slackmacgap" });
+    expect(slack).toBeChecked();
+    expect(screen.getByText("400 MB")).toBeVisible();
+
+    await user.click(slack);
+    expect(slack).not.toBeChecked();
+    expect(group).toHaveAttribute("aria-checked", "mixed");
+    expect(screen.getByText("1/2")).toBeVisible();
+    expect(screen.getByText(wholeText("1.25 GB selected"))).toBeVisible();
+
+    await user.click(group);
+    expect(group).toBeChecked();
+    expect(slack).toBeChecked();
+    expect(screen.getByText("2/2")).toBeVisible();
+
+    await user.click(screen.getByRole("button", { name: "App Caches items" }));
+    expect(slack).not.toBeInTheDocument();
   });
 });
 
+const REVIEW_RESULT: ScanResult = {
+  groups: [
+    {
+      id: "app-caches",
+      removalMethod: "delete",
+      defaultSelected: true,
+      items: [
+        { id: "spotify", path: "/Users/test/Library/Caches/com.spotify.client", bytes: 1_000_000_000 },
+        { id: "slack", path: "/Users/test/Library/Caches/com.tinyspeck.slackmacgap", bytes: 400_000_000 },
+      ],
+    },
+    {
+      id: "developer-tools",
+      removalMethod: "delete",
+      defaultSelected: false,
+      items: [{ id: "derived", path: "/Users/test/Library/Developer/Xcode/DerivedData", bytes: 3_000_000_000 }],
+    },
+    {
+      id: "app-leftovers",
+      removalMethod: "move-to-trash",
+      defaultSelected: true,
+      items: [{ id: "notion", path: "/Users/test/Library/Application Support/Notion", bytes: 250_000_000 }],
+    },
+    {
+      id: "device-firmware",
+      removalMethod: "move-to-trash",
+      defaultSelected: false,
+      items: [{ id: "firmware", path: "/Users/test/Library/iTunes/iPhone15,2_18.1.ipsw", bytes: 7_000_000_000 }],
+    },
+  ],
+};
+
+/** The color bar's segments as [label, width in percent], left to right. */
+function barSegments() {
+  const bar = screen.getByRole("img", { name: "Selection by junk group" });
+  return [...bar.querySelectorAll("rect")]
+    .map((segment) => [segment.textContent, segment.getAttribute("width")])
+    .filter(([, width]) => width !== "0");
+}
+
+/** Matches the one element whose whole text is text, even split across spans. */
+function wholeText(text: string) {
+  return (_: string, element: Element | null) =>
+    element?.textContent === text && [...element.children].every((child) => child.textContent !== text);
+}
+
+/** Scans to completion and lands on Review with result. */
+async function review(result: ScanResult) {
+  const scan = controlledScan();
+  const user = userEvent.setup();
+  render(<CleanTab startScan={scan.start} />);
+  await user.click(screen.getByRole("button", { name: "Start scan" }));
+  await act(async () => {
+    scan.resolve(result);
+    await Promise.resolve();
+  });
+  return { scan, user };
+}
+
+/** A Scan the test drives: each start gets its own result, settled by resolve. */
 function controlledScan() {
   let listener: (progress: ScanProgress) => void = () => {};
   let resolve: (result: ScanResult) => void = () => {};
-  const result = new Promise<ScanResult>((done) => {
-    resolve = done;
-  });
   const cancel = vi.fn();
+  let starts = 0;
   const start: StartScan = (onProgress) => {
+    starts++;
     listener = onProgress;
+    const result = new Promise<ScanResult>((done) => {
+      resolve = done;
+    });
     return { result, cancel };
   };
-  return { start, emit: (progress: ScanProgress) => listener(progress), resolve, cancel };
+  return {
+    start,
+    emit: (progress: ScanProgress) => listener(progress),
+    resolve: (result: ScanResult) => resolve(result),
+    cancel,
+    get starts() {
+      return starts;
+    },
+  };
 }

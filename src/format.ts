@@ -12,8 +12,17 @@ const twoDecimals = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, m
 /** "12.6 GB", "860 MB", "999 B"; "-" for a missing or invalid size. */
 export function formatBytes(bytes: number | null): string {
   if (!isQuantity(bytes)) return strings.unavailable;
-  if (Math.round(bytes) < STEP) return `${Math.round(bytes)} ${BYTE}`;
-  return scale(bytes / STEP, BYTE_MULTIPLES);
+  const { value, unit } = bytesParts(bytes);
+  return `${value} ${unit}`;
+}
+
+/** A formatted quantity split for display: "12.6" and "GB". */
+export type SizeParts = { value: string; unit: string };
+
+/** formatBytes as its number and unit, for a big number with a smaller unit. */
+export function bytesParts(bytes: number): SizeParts {
+  if (Math.round(bytes) < STEP) return { value: String(Math.max(0, Math.round(bytes))), unit: BYTE };
+  return scaleParts(bytes / STEP, BYTE_MULTIPLES);
 }
 
 /** "1.5 KB/s", "45.3 MB/s"; "-" for a missing or invalid speed. */
@@ -38,13 +47,19 @@ function isQuantity(value: number | null): value is number {
 
 /** Formats value in the first unit, moving up a unit while it rounds to 1000 or more. */
 function scale(value: number, units: readonly string[]): string {
+  const parts = scaleParts(value, units);
+  return `${parts.value} ${parts.unit}`;
+}
+
+function scaleParts(value: number, units: readonly string[]): SizeParts {
   let unit = 0;
   let scaled = value;
   while (roundToSignificant(scaled) >= STEP && unit < units.length - 1) {
     scaled /= STEP;
     unit++;
   }
-  return `${threeSignificantDigits.format(scaled)} ${units[unit]}`;
+  // The loop stops at the last unit, so the lookup always hits.
+  return { value: threeSignificantDigits.format(scaled), unit: units[unit] ?? "" };
 }
 
 function roundToSignificant(value: number): number {
