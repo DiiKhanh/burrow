@@ -7,6 +7,6 @@
   "formatter": { "indentStyle": "space", "indentWidth": 2, "lineWidth": 120 },
   "javascript": { "formatter": { "quoteStyle": "double" } },
   "css": { "parser": { "tailwindDirectives": true } },
-  "linter": { "enabled": true },
+  "linter": { "enabled": true, "rules": { "suspicious": { "noShadow": "error" } } },
   "assist": { "actions": { "source": { "organizeImports": "on" } } }
 }
