@@ -59,6 +59,8 @@ export const strings = {
       label: "Cleaning",
       /** The unit after the big number: "GB freed so far". */
       freedSoFar: (unit: string) => `${unit} freed so far`,
+      /** Under the big number once Move to Trash groups ran: "1.2 GB moved to Trash so far". */
+      trashedSoFar: (size: string) => `${size} moved to Trash so far`,
       groupProgress: (name: string) => `${name} clean progress`,
       /** "3 / 5": items removed of the group's selected items. */
       count: (cleaned: number, selected: number) => `${cleaned} / ${selected}`,
@@ -69,6 +71,8 @@ export const strings = {
       label: "Clean summary",
       /** The unit after the big number: "GB freed". */
       freed: (unit: string) => `${unit} freed`,
+      /** Under the big number when Move to Trash groups ran: "1.2 GB moved to Trash". */
+      trashed: (size: string) => `${size} moved to Trash`,
       summary: (removed: number, skipped: number) => `${removed} removed · ${skipped} skipped`,
       /** One skipped item: "/Users/me/Library/Caches/x (in use)". */
       skippedItem: (path: string, reason: SkipReason) => `${path} (${skipReasons[reason]})`,

@@ -140,6 +140,7 @@ function useCleaning() {
   const [progress, setProgress] = useState<Partial<Record<JunkGroupID, CleanProgress>>>({});
   const [active, setActive] = useState<JunkGroupID | null>(null);
   const [freedBytes, setFreedBytes] = useState(0);
+  const [trashedBytes, setTrashedBytes] = useState(0);
   const [report, setReport] = useState<CleanReport | null>(null);
 
   const start = async (result: ScanResult, ids: readonly string[]) => {
@@ -147,17 +148,19 @@ function useCleaning() {
     setProgress({});
     setActive(null);
     setFreedBytes(0);
+    setTrashedBytes(0);
     setReport(null);
     const next = await startClean(ids, (update) => {
       setProgress((current) => ({ ...current, [update.groupId]: update }));
       setActive(update.groupId);
       setFreedBytes(update.freedBytes);
+      setTrashedBytes(update.trashedBytes);
     });
     setActive(null);
     setReport(next);
   };
 
-  return { layers, progress, active, freedBytes, report, start };
+  return { layers, progress, active, freedBytes, trashedBytes, report, start };
 }
 
 /** The junk groups with selected items, in ScanResult order. */

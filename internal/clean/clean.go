@@ -2,15 +2,10 @@ package clean
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"path/filepath"
 	"time"
 )
-
-// ErrMoveToTrashUnavailable means the selection holds items of a Move to
-// Trash group, which Clean cannot remove yet (#23). Nothing was removed.
-var ErrMoveToTrashUnavailable = errors.New("clean: Move to Trash is not available yet")
 
 // SkipReason is why Clean left a selected junk item in place.
 type SkipReason string
@@ -38,16 +33,21 @@ type CleanReport struct {
 	Items []CleanedItem `json:"items"`
 	// FreedBytes counts the Scan sizes of the deleted items.
 	FreedBytes int64 `json:"freedBytes"`
+	// TrashedBytes counts the Scan sizes of the items moved to Trash: their
+	// space is freed only once the Trash is emptied.
+	TrashedBytes int64 `json:"trashedBytes"`
 }
 
 // CleanProgress is an observable point in a running Clean: how far the
-// active junk group got, and the bytes freed by the whole run so far.
+// active junk group got, and the bytes freed and moved to Trash by the whole
+// run so far.
 type CleanProgress struct {
-	GroupID    JunkGroupID `json:"groupId"`
-	Selected   int         `json:"selected"`
-	Cleaned    int         `json:"cleaned"`
-	Skipped    int         `json:"skipped"`
-	FreedBytes int64       `json:"freedBytes"`
+	GroupID      JunkGroupID `json:"groupId"`
+	Selected     int         `json:"selected"`
+	Cleaned      int         `json:"cleaned"`
+	Skipped      int         `json:"skipped"`
+	FreedBytes   int64       `json:"freedBytes"`
+	TrashedBytes int64       `json:"trashedBytes"`
 }
 
 // Clean removes the selected junk items of the current ScanResult. The
@@ -64,11 +64,6 @@ func (e *Engine) Clean(ctx context.Context, selection []string, onProgress func(
 		return CleanReport{}, fmt.Errorf("clean: resolving Home: %w", err)
 	}
 	unknown, groups := e.plan(selection)
-	for _, group := range groups {
-		if group.RemovalMethod != Delete {
-			return CleanReport{}, ErrMoveToTrashUnavailable
-		}
-	}
 	started := time.Now()
 	report, err := e.run(ctx, realHome, unknown, groups, onProgress)
 	// A stopped run is logged too: it may have removed items already.
@@ -95,7 +90,7 @@ func (e *Engine) run(ctx context.Context, realHome string, unknown []string, gro
 // cleanGroup removes the selected items of one group into report, sending
 // progress before the first item and after each one.
 func (e *Engine) cleanGroup(ctx context.Context, realHome string, group JunkGroup, report *CleanReport, onProgress func(CleanProgress) error) error {
-	progress := CleanProgress{GroupID: group.ID, Selected: len(group.Items), FreedBytes: report.FreedBytes}
+	progress := CleanProgress{GroupID: group.ID, Selected: len(group.Items), FreedBytes: report.FreedBytes, TrashedBytes: report.TrashedBytes}
 	if err := sendCleanProgress(onProgress, progress); err != nil {
 		return err
 	}
@@ -105,13 +100,18 @@ func (e *Engine) cleanGroup(ctx context.Context, realHome string, group JunkGrou
 		}
 		cleaned := e.remove(realHome, group, item)
 		report.Items = append(report.Items, cleaned)
-		if cleaned.SkipReason == nil {
+		switch {
+		case cleaned.SkipReason != nil:
+			progress.Skipped++
+		case group.RemovalMethod == MoveToTrash:
+			report.TrashedBytes += item.Bytes
+			progress.Cleaned++
+		default:
 			report.FreedBytes += item.Bytes
 			progress.Cleaned++
-		} else {
-			progress.Skipped++
 		}
 		progress.FreedBytes = report.FreedBytes
+		progress.TrashedBytes = report.TrashedBytes
 		if err := sendCleanProgress(onProgress, progress); err != nil {
 			return err
 		}
@@ -166,7 +166,11 @@ func (e *Engine) remove(realHome string, group JunkGroup, item JunkItem) Cleaned
 		cleaned.SkipReason = ptr(reason)
 		return cleaned
 	}
-	if err := e.remover.Delete(item.Path); err != nil {
+	removeWith := e.remover.Delete
+	if group.RemovalMethod == MoveToTrash {
+		removeWith = e.remover.MoveToTrash
+	}
+	if err := removeWith(item.Path); err != nil {
 		e.logger.Warn("could not remove junk item", "path", item.Path, "error", err)
 		cleaned.SkipReason = ptr(removalFailure(err))
 	}

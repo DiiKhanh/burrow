@@ -2,19 +2,28 @@
 package cleantest
 
 import (
+	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
 
 	"github.com/DiiKhanh/burrow/internal/clean"
 )
 
 // FakeRemover removes for real, but only inside the OS temp dir: it panics
-// on any other path. It records every path it was asked to remove.
+// on any other path. Delete removes for good; MoveToTrash moves into
+// TrashDir, a stand-in for the macOS Trash such as `<temp>/.Trash`. It
+// records every path it was asked to remove, by method.
 type FakeRemover struct {
+	// TrashDir is where MoveToTrash puts items; it is created when needed.
+	TrashDir string
+	// Fail, when set, makes Delete and MoveToTrash return its error instead
+	// of removing.
+	Fail func(path string) error
+
 	mu      sync.Mutex
 	deleted []string
-	// Fail, when set, makes Delete return its error instead of removing.
-	Fail func(path string) error
+	trashed []string
 }
 
 var _ clean.Remover = (*FakeRemover)(nil)
@@ -22,22 +31,72 @@ var _ clean.Remover = (*FakeRemover)(nil)
 // Delete removes path and everything under it.
 func (r *FakeRemover) Delete(path string) error {
 	clean.RequireTempDirInTests(path)
-	r.mu.Lock()
-	r.deleted = append(r.deleted, path)
-	r.mu.Unlock()
-	if r.Fail != nil {
-		if err := r.Fail(path); err != nil {
-			return err
-		}
+	r.record(&r.deleted, path)
+	if err := r.failure(path); err != nil {
+		return err
 	}
 	return os.RemoveAll(path)
 }
 
+// MoveToTrash moves path into TrashDir. Like the Finder, it gives an item
+// a numbered name, "Gone App 2", when TrashDir already holds its name.
+func (r *FakeRemover) MoveToTrash(path string) error {
+	clean.RequireTempDirInTests(path)
+	if r.TrashDir == "" {
+		panic("cleantest: FakeRemover.MoveToTrash needs a TrashDir")
+	}
+	clean.RequireTempDirInTests(r.TrashDir)
+	r.record(&r.trashed, path)
+	if err := r.failure(path); err != nil {
+		return err
+	}
+	if _, err := os.Lstat(path); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(r.TrashDir, 0o700); err != nil {
+		return err
+	}
+	return os.Rename(path, freeName(r.TrashDir, filepath.Base(path)))
+}
+
 // Deleted returns the paths Delete was called with, in order.
 func (r *FakeRemover) Deleted() []string {
+	return r.recorded(&r.deleted)
+}
+
+// Trashed returns the paths MoveToTrash was called with, in order.
+func (r *FakeRemover) Trashed() []string {
+	return r.recorded(&r.trashed)
+}
+
+func (r *FakeRemover) record(paths *[]string, path string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return append([]string(nil), r.deleted...)
+	*paths = append(*paths, path)
+}
+
+func (r *FakeRemover) recorded(paths *[]string) []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]string(nil), *paths...)
+}
+
+func (r *FakeRemover) failure(path string) error {
+	if r.Fail == nil {
+		return nil
+	}
+	return r.Fail(path)
+}
+
+// freeName returns the first path in dir for name that nothing holds yet.
+func freeName(dir, name string) string {
+	candidate := filepath.Join(dir, name)
+	for n := 2; ; n++ {
+		if _, err := os.Lstat(candidate); os.IsNotExist(err) {
+			return candidate
+		}
+		candidate = filepath.Join(dir, fmt.Sprintf("%s %d", name, n))
+	}
 }
 
 // FakeProcesses stands in for the processes running on the Mac. Tests

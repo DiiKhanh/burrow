@@ -63,35 +63,39 @@ async function runScan(call: ScanCall, scenario: string | null, browsers: Browse
 }
 
 /**
- * Cleans the selected items of the page's Scan, one every 20 ms. Like the
- * engine until Move to Trash lands, it refuses a selection with items of a
- * Move to Trash group, and like the engine it skips the items of a locked
- * group as in use. By `?clean=`: `skipped` skips the first item as in use,
- * `running` stops after the first item and never ends.
+ * Cleans the selected items of the page's Scan, one every 20 ms, counting a
+ * Move to Trash group's items as moved to Trash, not freed. Like the engine,
+ * it skips the items of a locked group as in use. By `?clean=`: `skipped`
+ * skips the first item as in use, `running` stops after the first item and
+ * never ends, `failed` fails before removing anything.
  */
 async function runClean(call: CleanCall, scan: ScanResult, scenario: string | null, browsers: Browsers) {
+  if (scenario === "failed") {
+    call.reject(new Error("fake: Clean failed"));
+    return;
+  }
   const selected = new Set(call.ids);
   const groups = scan.groups
     .map((group) => ({ ...group, items: group.items.filter((item) => selected.has(item.id)) }))
     .filter((group) => group.items.length > 0);
-  if (groups.some((group) => group.removalMethod !== "delete")) {
-    call.reject(new Error("clean: Move to Trash is not available yet"));
-    return;
-  }
   const steps = groups.flatMap((group) => group.items.map((item, index) => ({ group, item, index })));
-  let report: CleanReport = { items: [], freedBytes: 0 };
+  let report: CleanReport = { items: [], freedBytes: 0, trashedBytes: 0 };
   let progress: CleanProgress | null = null;
   for (const { group, item, index } of steps) {
     if (!(await stillRunning(call, 20))) return;
     const locked = lockedBy(browsers).some((lock) => lock.id === group.id);
     const skipReason = locked || (scenario === "skipped" && report.items.length === 0) ? "in_use" : null;
-    const freedBytes = report.freedBytes + (skipReason ? 0 : item.bytes);
+    const removed = skipReason ? 0 : item.bytes;
+    const trashed = group.removalMethod === "move-to-trash";
+    const freedBytes = report.freedBytes + (trashed ? 0 : removed);
+    const trashedBytes = report.trashedBytes + (trashed ? removed : 0);
     report = {
       items: [
         ...report.items,
         { id: item.id, path: item.path, bytes: item.bytes, method: group.removalMethod, skipReason },
       ],
       freedBytes,
+      trashedBytes,
     };
     const before: Pick<CleanProgress, "cleaned" | "skipped"> =
       index === 0 || !progress ? { cleaned: 0, skipped: 0 } : progress;
@@ -101,6 +105,7 @@ async function runClean(call: CleanCall, scan: ScanResult, scenario: string | nu
       cleaned: before.cleaned + (skipReason ? 0 : 1),
       skipped: before.skipped + (skipReason ? 1 : 0),
       freedBytes,
+      trashedBytes,
     };
     call.emit(progress);
     if (scenario === "running") return;

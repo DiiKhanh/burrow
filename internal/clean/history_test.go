@@ -121,3 +121,27 @@ func readHistory(t *testing.T, path string) []historyLine {
 	}
 	return lines
 }
+
+func TestCleanHistoryNamesHowEachItemWasRemoved(t *testing.T) {
+	home := newHome(t)
+	cache := writeFile(t, home, "Library/Caches/app.cache", 10)
+	leftover := writeFile(t, home, "Library/Application Support/Gone App/data", 20)
+	engine := scannedEngine(t, home,
+		clean.JunkGroup{ID: clean.AppCaches, RemovalMethod: clean.Delete, Items: []clean.JunkItem{{ID: "cache", Path: cache, Bytes: 10}}},
+		clean.JunkGroup{ID: clean.AppLeftovers, RemovalMethod: clean.MoveToTrash, Items: []clean.JunkItem{{ID: "leftover", Path: leftover, Bytes: 20}}},
+	)
+
+	if _, err := engine.Clean(context.Background(), []string{"cache", "leftover"}, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	lines := readHistory(t, filepath.Join(home, "Library/Application Support/Burrow/history.jsonl"))
+	if len(lines) != 1 || len(lines[0].Items) != 2 {
+		t.Fatalf("history = %+v, want one run of two items", lines)
+	}
+	for i, want := range []struct{ id, method string }{{"cache", "delete"}, {"leftover", "move-to-trash"}} {
+		if got := lines[0].Items[i]; got.ID != want.id || got.Method != want.method || got.Outcome != "removed" {
+			t.Errorf("history item %d = %+v, want %s removed with %s", i, got, want.id, want.method)
+		}
+	}
+}

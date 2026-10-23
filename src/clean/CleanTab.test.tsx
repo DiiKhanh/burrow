@@ -231,15 +231,48 @@ describe("Clean and Done", () => {
     const steps = screen.getByRole("list", { name: "Clean progress" });
     expect(within(steps).getByText("Clean").closest("li")).toHaveAttribute("aria-current", "step");
 
-    act(() => clean.emit({ groupId: "app-caches", selected: 2, cleaned: 1, skipped: 0, freedBytes: 1_000_000_000 }));
+    expect(within(strata).queryByText(/moved to Trash/)).not.toBeInTheDocument();
+
+    act(() =>
+      clean.emit({
+        groupId: "app-caches",
+        selected: 2,
+        cleaned: 1,
+        skipped: 0,
+        freedBytes: 1_000_000_000,
+        trashedBytes: 0,
+      }),
+    );
     expect(within(strata).getByText(wholeText("1 GB freed so far"))).toBeVisible();
     expect(layer(strata, "App Caches")).toHaveTextContent("1 / 2");
     expect(screen.getByRole("progressbar", { name: "App Caches clean progress" })).toHaveAttribute("value", "0.5");
     expect(layer(strata, "App Leftovers")).toHaveTextContent("0 / 1");
 
-    act(() => clean.emit({ groupId: "app-caches", selected: 2, cleaned: 1, skipped: 1, freedBytes: 1_000_000_000 }));
+    act(() =>
+      clean.emit({
+        groupId: "app-caches",
+        selected: 2,
+        cleaned: 1,
+        skipped: 1,
+        freedBytes: 1_000_000_000,
+        trashedBytes: 0,
+      }),
+    );
     expect(layer(strata, "App Caches")).toHaveTextContent("1 skipped");
     expect(layer(strata, "App Caches")).toHaveTextContent("1 / 2");
+
+    act(() =>
+      clean.emit({
+        groupId: "app-leftovers",
+        selected: 1,
+        cleaned: 1,
+        skipped: 0,
+        freedBytes: 1_000_000_000,
+        trashedBytes: 250_000_000,
+      }),
+    );
+    expect(within(strata).getByText(wholeText("1 GB freed so far"))).toBeVisible();
+    expect(within(strata).getByText("250 MB moved to Trash so far")).toBeVisible();
   });
 
   it("ends on Done with what was removed and skipped, then Finish starts over", async () => {
@@ -248,8 +281,22 @@ describe("Clean and Done", () => {
     const clean = fakeGo.clean.last;
 
     await act(async () => {
-      clean.emit({ groupId: "app-caches", selected: 2, cleaned: 1, skipped: 1, freedBytes: 1_000_000_000 });
-      clean.emit({ groupId: "app-leftovers", selected: 1, cleaned: 1, skipped: 0, freedBytes: 1_250_000_000 });
+      clean.emit({
+        groupId: "app-caches",
+        selected: 2,
+        cleaned: 1,
+        skipped: 1,
+        freedBytes: 1_000_000_000,
+        trashedBytes: 0,
+      });
+      clean.emit({
+        groupId: "app-leftovers",
+        selected: 1,
+        cleaned: 1,
+        skipped: 0,
+        freedBytes: 1_000_000_000,
+        trashedBytes: 250_000_000,
+      });
       clean.resolve({
         items: [
           {
@@ -270,18 +317,20 @@ describe("Clean and Done", () => {
             id: "notion",
             path: "/Users/test/Library/Application Support/Notion",
             bytes: 250_000_000,
-            method: "delete",
+            method: "move-to-trash",
             skipReason: null,
           },
         ],
-        freedBytes: 1_250_000_000,
+        freedBytes: 1_000_000_000,
+        trashedBytes: 250_000_000,
       });
       await Promise.resolve();
     });
 
     const steps = screen.getByRole("list", { name: "Clean progress" });
     expect(within(steps).getByText("Done").closest("li")).toHaveAttribute("aria-current", "step");
-    expect(screen.getByText(wholeText("1.25 GB freed"))).toBeVisible();
+    expect(screen.getByText(wholeText("1 GB freed"))).toBeVisible();
+    expect(screen.getByText("250 MB moved to Trash")).toBeVisible();
     expect(screen.getByText("2 removed · 1 skipped")).toBeVisible();
     expect(screen.getByText("/Users/test/Library/Caches/com.tinyspeck.slackmacgap (in use)")).toBeVisible();
 
@@ -303,6 +352,7 @@ describe("Clean and Done", () => {
           { id: "d", path: "/Users/test/d", bytes: 1, method: "delete", skipReason: "already_gone" },
         ],
         freedBytes: 0,
+        trashedBytes: 0,
       });
       await Promise.resolve();
     });

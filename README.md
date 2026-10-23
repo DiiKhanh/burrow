@@ -25,6 +25,7 @@ bun run check               # lint, typecheck and unit tests, Go and TypeScript
 bun run test:integration    # Go integration tests
 bun run test:e2e            # Playwright, against the UI with a fake Go client
 bun run test:smoke          # launches the built app
+bun run test:realtrash      # moves a temp file into your real Trash; never in CI
 ```
 
 Burrow ships its own Mole: `mole.lock` pins the release and the SHA-256 of what Burrow downloads, and `bun run fetch:mole` installs it, failing on any checksum mismatch. The source checksum is that of GitHub's archive of the tag; should GitHub ever regenerate it, the fetch fails safe and the lock needs a reviewed re-pin. `dev`, `build` and the tests fetch it first. To move to another release, run `go run ./tools/fetchmole -update V1.63.0` and review the diff of `mole.lock`; the integration tests must pass in the same PR.
