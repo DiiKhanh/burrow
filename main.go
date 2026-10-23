@@ -5,7 +5,10 @@ package main
 import (
 	"fmt"
 	"log"
+	"log/slog"
+	"os"
 
+	"github.com/DiiKhanh/burrow/internal/clean"
 	"github.com/DiiKhanh/burrow/internal/engine"
 	"github.com/DiiKhanh/burrow/internal/mole"
 	"github.com/DiiKhanh/burrow/internal/service"
@@ -17,7 +20,8 @@ import (
 const windowBackground = "#1b1f31"
 
 func main() {
-	mygo.Bind(&service.Clean{}, &service.Status{})
+	cleanService, configureClean := service.NewClean()
+	mygo.Bind(cleanService, &service.Status{})
 	mygo.Theme.SetSource(mygo.ThemeDark)
 
 	mygo.App.WhenReady(func() {
@@ -26,6 +30,11 @@ func main() {
 		if err != nil {
 			log.Fatalf("starting Burrow: %v", err)
 		}
+		home, err := os.UserHomeDir()
+		if err != nil {
+			log.Fatalf("finding the user's home: %v", err)
+		}
+		configureClean(clean.NewEngine(mole.NewScanner(bundle, home, slog.Default())))
 		win := mygo.NewWindow(mygo.WindowOptions{
 			Title:           "Burrow",
 			Width:           1100,

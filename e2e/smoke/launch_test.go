@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/DiiKhanh/burrow/internal/mole"
+	"github.com/DiiKhanh/burrow/internal/testhome"
 )
 
 const (
@@ -38,7 +39,7 @@ func TestAppLaunches(t *testing.T) {
 
 	var output bytes.Buffer
 	cmd := exec.Command(path)
-	cmd.Env = append(os.Environ(), "HOME="+t.TempDir())
+	cmd.Env = append(os.Environ(), "HOME="+generatedHome(t).Home)
 	cmd.Stdout = &output
 	cmd.Stderr = &output
 	if err := cmd.Start(); err != nil {
@@ -72,10 +73,43 @@ func TestAppShipsMole(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 		defer cancel()
 		cmd := exec.CommandContext(ctx, args[0], args[1:]...)
-		cmd.Env = []string{"HOME=" + t.TempDir(), "PATH=/usr/bin:/bin:/usr/sbin:/sbin", "TERM=dumb"}
+		cmd.Env = []string{"HOME=" + generatedHome(t).Home, "PATH=/usr/bin:/bin:/usr/sbin:/sbin", "TERM=dumb"}
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			t.Errorf("%s: %v\n%s", strings.Join(args, " "), err, out)
 		}
 	}
+}
+
+func TestAppBundledMoleScansTheGeneratedHome(t *testing.T) {
+	bundle, err := mole.Locate(resources)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest := generatedHome(t)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, bundle.Mo(), "clean", "--dry-run")
+	cmd.Env = []string{"HOME=" + manifest.Home, "PATH=/usr/bin:/bin:/usr/sbin:/sbin", "TERM=dumb"}
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("mo clean --dry-run: %v\n%s", err, out)
+	}
+	cleanList, err := os.ReadFile(filepath.Join(manifest.Home, ".config/mole/clean-list.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range manifest.Items {
+		if !bytes.Contains(cleanList, []byte(item.Path)) {
+			t.Errorf("clean-list did not contain generated fixture item %s", item.Path)
+		}
+	}
+}
+
+func generatedHome(t *testing.T) testhome.Manifest {
+	t.Helper()
+	manifest, err := testhome.Generate(filepath.Join(t.TempDir(), "home"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return manifest
 }

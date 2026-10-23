@@ -3,14 +3,95 @@
 package mole
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"log/slog"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/DiiKhanh/burrow/internal/clean"
+	"github.com/DiiKhanh/burrow/internal/testhome"
 )
+
+func TestIntegrationBundledMoScansTheGeneratedHome(t *testing.T) {
+	home := t.TempDir()
+	manifest, err := testhome.Generate(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var logs bytes.Buffer
+	adapter := NewScanner(bundled(t), home, slog.New(slog.NewTextHandler(&logs, nil)))
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+
+	var progress []clean.ScanProgress
+	result, err := adapter.Scan(ctx, func(update clean.ScanProgress) error {
+		progress = append(progress, update)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := make(map[string]struct {
+		group clean.JunkGroupID
+		bytes int64
+	})
+	for _, group := range result.Groups {
+		for _, item := range group.Items {
+			got[item.Path] = struct {
+				group clean.JunkGroupID
+				bytes int64
+			}{group: group.ID, bytes: item.Bytes}
+		}
+	}
+	want := make(map[string]struct {
+		group clean.JunkGroupID
+		bytes int64
+	}, len(manifest.Items))
+	for _, item := range manifest.Items {
+		want[item.Path] = struct {
+			group clean.JunkGroupID
+			bytes int64
+		}{group: item.GroupID, bytes: item.Bytes}
+	}
+	if len(got) != len(want) {
+		t.Fatalf("Scan returned %#v, want %#v", got, want)
+	}
+	for path, expected := range want {
+		if got[path] != expected {
+			t.Errorf("Scan item %s = %#v, want %#v", path, got[path], expected)
+		}
+		if !slices.ContainsFunc(progress, func(update clean.ScanProgress) bool {
+			return update.CurrentPath == path
+		}) {
+			t.Errorf("Scan progress never reported generated fixture path %s", path)
+		}
+	}
+	var maxFound int64
+	for _, update := range progress {
+		if update.FoundBytes < maxFound {
+			t.Errorf("live found total decreased from %d to %d", maxFound, update.FoundBytes)
+		}
+		if update.FoundBytes > maxFound {
+			maxFound = update.FoundBytes
+		}
+	}
+	var wantFound int64
+	for _, item := range manifest.Items {
+		wantFound += item.Bytes
+	}
+	if maxFound != wantFound {
+		t.Errorf("largest live found total = %d, want %d", maxFound, wantFound)
+	}
+	if strings.Contains(logs.String(), "unknown Mole section") {
+		t.Fatalf("pinned Mole emitted an unmapped section:\n%s", logs.String())
+	}
+}
 
 // The bundle that `bun run fetch:mole` installed into the project.
 const projectResources = "../../resources"
