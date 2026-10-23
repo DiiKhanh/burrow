@@ -115,6 +115,10 @@ func (b Bundle) WatchStatus(ctx context.Context, yield func(StatusSample)) error
 		return fmt.Errorf("mole: starting the status collector: %w", err)
 	}
 	decodeErr := DecodeStatus(stdout, yield)
+	if decodeErr != nil {
+		// Nothing reads the collector any more: it would block on a full pipe.
+		_ = cmd.Process.Kill()
+	}
 	waitErr := cmd.Wait()
 	if ctx.Err() != nil {
 		return ctx.Err()

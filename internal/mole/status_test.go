@@ -1,10 +1,13 @@
 package mole
 
 import (
+	"context"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 func decodeAll(t *testing.T, ndjson string) ([]StatusSample, error) {
@@ -146,6 +149,27 @@ func TestDecodeStatusFailsOnABrokenStream(t *testing.T) {
 	}
 	if len(samples) != 1 {
 		t.Errorf("decoded %d samples before the broken line, want 1", len(samples))
+	}
+}
+
+func TestWatchStatusStopsTheCollectorOnABrokenLine(t *testing.T) {
+	dir := t.TempDir()
+	fakeBundle(t, dir)
+	// A collector that keeps sampling after printing a line that is not JSON.
+	collector := "#!/bin/sh\necho 'status: warming up'\nexec sleep 30\n"
+	if err := os.WriteFile(filepath.Join(dir, StatusPath), []byte(collector), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	done := make(chan error, 1)
+	go func() { done <- Bundle{dir: dir}.WatchStatus(context.Background(), func(StatusSample) {}) }()
+	select {
+	case err := <-done:
+		if err == nil || !strings.Contains(err.Error(), "reading the status stream") {
+			t.Errorf("err = %v, want the stream's error", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("WatchStatus kept waiting for a collector whose stream broke")
 	}
 }
 
