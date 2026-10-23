@@ -83,6 +83,8 @@
 
   /* Status bento: two rows of cards, the first column wider. */
   --spacing-bento-row: 178px;
+  /* Room for the process table's heading and five rows in a short window. */
+  --spacing-process-table: 220px;
 
   /* The Clean column. */
   --container-clean: 680px;

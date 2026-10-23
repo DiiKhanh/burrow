@@ -161,30 +161,19 @@ func TestStatusWatcherIgnoresHidingWhileHidden(t *testing.T) {
 	run.stopped(t)
 }
 
-func TestStatusWatcherStartsAgainAfterTheCollectorStopsOnItsOwn(t *testing.T) {
+func TestStatusWatcherRestartsACollectorThatStoppedOnItsOwn(t *testing.T) {
 	runs := make(chan struct{}, 4)
 	crashing := func(context.Context, func(mole.StatusSample)) error {
 		runs <- struct{}{}
-		return errors.New("status-go exited")
+		return errors.New("status exited")
 	}
-	w := NewStatusWatcher(crashing, func(Snapshot) {})
+	noWait := func(ctx context.Context, _ time.Duration) error { return ctx.Err() }
+	w := newStatusWatcher(crashing, noWait, func(Snapshot) {})
 	defer w.Stop()
 
 	w.Start()
 	waitFor(t, runs)
-	// The window shows again (focus, restore) some time after the crash.
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		w.Start()
-		select {
-		case <-runs:
-			return
-		case <-time.After(10 * time.Millisecond):
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("the collector was not started again")
-		}
-	}
+	waitFor(t, runs)
 }
 
 func TestStatusWatcherStartsTheNextCollectorOnceTheLastOneExited(t *testing.T) {

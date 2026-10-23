@@ -142,6 +142,30 @@ func TestDecodeStatusReadsTheRemainingStatusCards(t *testing.T) {
 	}
 }
 
+func TestDecodeStatusReadsTheTopProcessesByCPU(t *testing.T) {
+	samples, err := decodeAll(t, `{"top_processes":[
+		{"pid":88,"ppid":1,"name":"WindowServer","command":"/System/WindowServer","cpu":12.5,"memory":1.2,"memory_bytes":210000000},
+		{"pid":512,"ppid":1,"name":"Safari","command":"/Applications/Safari.app","cpu":140.2,"memory":4.5,"memory_bytes":780000000},
+		{"pid":1,"ppid":0,"name":"launchd","command":"/sbin/launchd","cpu":0.1,"memory":0},
+		{"pid":7,"ppid":1,"name":"","command":"","cpu":3,"memory":0.1,"memory_bytes":4096},
+		{"pid":42,"ppid":1,"name":"mds","command":"/usr/libexec/mds","cpu":3,"memory":0.4,"memory_bytes":90000000},
+		{"pid":9,"ppid":1,"name":"Dock","command":"/System/Dock","cpu":1,"memory":0.2,"memory_bytes":50000000}
+	]}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Process{
+		{PID: 512, Name: ptr("Safari"), CPU: 140.2, MemoryBytes: ptr(uint64(780000000))},
+		{PID: 88, Name: ptr("WindowServer"), CPU: 12.5, MemoryBytes: ptr(uint64(210000000))},
+		{PID: 7, CPU: 3, MemoryBytes: ptr(uint64(4096))},
+		{PID: 42, Name: ptr("mds"), CPU: 3, MemoryBytes: ptr(uint64(90000000))},
+		{PID: 9, Name: ptr("Dock"), CPU: 1, MemoryBytes: ptr(uint64(50000000))},
+	}
+	if got := samples[0].Processes; !reflect.DeepEqual(got, want) {
+		t.Errorf("processes =\n%+v\nwant the 5 busiest, busiest first\n%+v", got, want)
+	}
+}
+
 func TestDecodeStatusUsesPowerWhenThereIsNoBatteryOrFan(t *testing.T) {
 	samples, err := decodeAll(t, `{
 		"hardware":{"model":"Mac mini"},
