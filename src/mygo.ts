@@ -69,6 +69,9 @@ export interface CleanedItem {
   skipReason: SkipReason | null;
 }
 
+/** CollectorState says whether the values are live. */
+export type CollectorState = "running" | "retrying";
+
 /** Disk is the startup disk only. Trash is nil when protected access failed. */
 export interface Disk {
   free: number | null;
@@ -150,6 +153,19 @@ export interface Power {
   adapterWatts: number | null;
 }
 
+/** Process is one of the busiest processes on the Mac. */
+export interface Process {
+  pid: number;
+  name: string | null;
+  /**
+   * CPU is the share of one core in use, in percent, as ps reports it:
+   * a process busy on two cores shows 200.
+   */
+  cpu: number;
+  /** MemoryBytes is the resident memory. */
+  memoryBytes: number | null;
+}
+
 /** RemovalMethod says how a later Clean removes a group. */
 export type RemovalMethod = "delete" | "move-to-trash";
 
@@ -203,7 +219,10 @@ export interface Snapshot {
   diskIO: DiskIO;
   thermal: Thermal;
   bluetooth: BluetoothDevice[];
+  /** Processes are the busiest by CPU, busiest first. */
+  processes: Process[];
   series: Series;
+  collector: CollectorState;
 }
 
 /** Thermal contains the sensors Burrow can show without root. */

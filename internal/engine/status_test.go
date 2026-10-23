@@ -2,11 +2,14 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/DiiKhanh/burrow/internal/mole"
 )
@@ -32,11 +35,59 @@ func streaming(stream string) StatusSource {
 	}
 }
 
+// watchAll runs one collector: WatchStatus stops when it would wait to
+// start the next. It returns the snapshots sent while the collector ran.
 func watchAll(t *testing.T, source StatusSource) ([]Snapshot, error) {
 	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	stopInsteadOfRetrying := func(ctx context.Context, _ time.Duration) error {
+		cancel()
+		return ctx.Err()
+	}
 	var snapshots []Snapshot
-	err := WatchStatus(context.Background(), source, func(s Snapshot) { snapshots = append(snapshots, s) })
-	return snapshots, err
+	err := WatchStatus(ctx, source, stopInsteadOfRetrying, func(s Snapshot) {
+		if s.Collector == CollectorRunning {
+			snapshots = append(snapshots, s)
+		}
+	})
+	if !errors.Is(err, context.Canceled) {
+		return snapshots, err
+	}
+	return snapshots, nil
+}
+
+// failing is a collector that stops at once on every run, after sending
+// the samples of that run's usages.
+func failing(runs ...[]float64) (StatusSource, *atomic.Int64) {
+	var started atomic.Int64
+	return func(_ context.Context, yield func(mole.StatusSample)) error {
+		run := int(started.Add(1)) - 1
+		if run < len(runs) {
+			for _, usage := range runs[run] {
+				yield(mole.StatusSample{CPU: mole.CPU{Usage: &usage}})
+			}
+		}
+		return errors.New("status exited")
+	}, &started
+}
+
+// waits records how long WatchStatus waits before each restart and stops
+// it after the given number of waits.
+func waits(t *testing.T, source StatusSource, count int, emit func(Snapshot)) []time.Duration {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	var delays []time.Duration
+	sleep := func(ctx context.Context, d time.Duration) error {
+		delays = append(delays, d)
+		if len(delays) == count {
+			cancel()
+		}
+		return ctx.Err()
+	}
+	if err := WatchStatus(ctx, source, sleep, emit); !errors.Is(err, context.Canceled) {
+		t.Fatalf("WatchStatus = %v, want it to run until its context ends", err)
+	}
+	return delays
 }
 
 func usages(from, to int) []*float64 {
@@ -160,13 +211,78 @@ func TestWatchStatusPassesEveryCurrentCardThrough(t *testing.T) {
 	}
 }
 
-func TestWatchStatusReportsABrokenStream(t *testing.T) {
-	snapshots, err := watchAll(t, streaming(ndjson(ptr(10.0))+`{"cpu":`))
-	if err == nil {
-		t.Fatal("err = nil, want the stream's error")
+func TestWatchStatusPassesTheTopProcessesThrough(t *testing.T) {
+	snapshots, err := watchAll(t, streaming(`{"top_processes":[{"pid":512,"name":"Safari","cpu":40,"memory_bytes":4096}]}`))
+	if err != nil {
+		t.Fatal(err)
 	}
-	if len(snapshots) != 1 {
-		t.Errorf("sent %d snapshots, want 1 before the broken line", len(snapshots))
+	want := []mole.Process{{PID: 512, Name: ptr("Safari"), CPU: 40, MemoryBytes: ptr(uint64(4096))}}
+	if got := snapshots[0].Processes; !reflect.DeepEqual(got, want) {
+		t.Errorf("processes = %+v, want %+v", got, want)
+	}
+}
+
+func TestWatchStatusPausesOnABrokenStream(t *testing.T) {
+	var sent []Snapshot
+	waits(t, streaming(ndjson(ptr(10.0))+`{"cpu":`), 1, func(s Snapshot) { sent = append(sent, s) })
+	if len(sent) != 2 || sent[0].Collector != CollectorRunning || sent[1].Collector != CollectorRetrying {
+		t.Fatalf("sent %d snapshots, want the sample before the broken line, then a pause", len(sent))
+	}
+}
+
+func TestWatchStatusBacksOffWhileTheCollectorKeepsStopping(t *testing.T) {
+	source, _ := failing()
+	got := waits(t, source, 8, func(Snapshot) {})
+	want := []time.Duration{
+		1 * time.Second, 2 * time.Second, 4 * time.Second, 8 * time.Second,
+		16 * time.Second, 30 * time.Second, 30 * time.Second, 30 * time.Second,
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("waits = %v, want %v", got, want)
+	}
+}
+
+func TestWatchStatusBacksOffFromOneSecondAgainOnceTheCollectorRecovers(t *testing.T) {
+	source, _ := failing(nil, nil, nil, []float64{10}, nil)
+	got := waits(t, source, 5, func(Snapshot) {})
+	want := []time.Duration{1 * time.Second, 2 * time.Second, 4 * time.Second, 1 * time.Second, 2 * time.Second}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("waits = %v, want %v", got, want)
+	}
+}
+
+func TestWatchStatusKeepsTheLastValuesWhileRetrying(t *testing.T) {
+	source, started := failing([]float64{10, 20}, []float64{30})
+	var sent []Snapshot
+	waits(t, source, 2, func(s Snapshot) { sent = append(sent, s) })
+	if started.Load() != 2 {
+		t.Fatalf("started %d collectors, want 2", started.Load())
+	}
+
+	var states []CollectorState
+	for _, s := range sent {
+		states = append(states, s.Collector)
+	}
+	if want := []CollectorState{CollectorRunning, CollectorRunning, CollectorRetrying, CollectorRunning, CollectorRetrying}; !reflect.DeepEqual(states, want) {
+		t.Fatalf("collector states = %v, want %v", states, want)
+	}
+	paused := sent[2]
+	if paused.CPU.Usage == nil || *paused.CPU.Usage != 20 || len(paused.Series.CPU) != 2 {
+		t.Errorf("paused snapshot = usage %v series %v, want the last values: 20, [10 20]", paused.CPU.Usage, values(paused.Series.CPU))
+	}
+	if got, want := sent[3].Series.CPU, []*float64{ptr(10.0), ptr(20.0), ptr(30.0)}; !reflect.DeepEqual(got, want) {
+		t.Errorf("series after recovering = %v, want the history to go on: [10 20 30]", values(got))
+	}
+}
+
+func TestWatchStatusPausesWithNothingReadBeforeTheFirstSample(t *testing.T) {
+	source, _ := failing()
+	var sent []Snapshot
+	waits(t, source, 1, func(s Snapshot) { sent = append(sent, s) })
+	// Like Mole before it knows the model: a Battery card, nothing in it.
+	want := Snapshot{Battery: &mole.Battery{}, Collector: CollectorRetrying}
+	if len(sent) != 1 || !reflect.DeepEqual(sent[0], want) {
+		t.Errorf("sent %+v, want only %+v", sent, want)
 	}
 }
 
@@ -178,7 +294,7 @@ func TestWatchStatusStopsWithItsContext(t *testing.T) {
 		return mole.DecodeStatus(reader, yield)
 	}
 	done := make(chan error)
-	go func() { done <- WatchStatus(ctx, source, func(Snapshot) {}) }()
+	go func() { done <- WatchStatus(ctx, source, sleepContext, func(Snapshot) {}) }()
 
 	cancel()
 	if err := <-done; err == nil {

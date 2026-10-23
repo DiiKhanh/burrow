@@ -2,8 +2,6 @@ package engine
 
 import (
 	"context"
-	"errors"
-	"log"
 	"sync"
 )
 
@@ -12,6 +10,7 @@ import (
 // minimizes or closes. History starts again on every Start.
 type StatusWatcher struct {
 	source StatusSource
+	sleep  Sleep
 	emit   func(Snapshot)
 
 	mu     sync.Mutex
@@ -28,13 +27,17 @@ type StatusWatcher struct {
 // NewStatusWatcher returns a stopped watcher that sends snapshots of source
 // to emit once started.
 func NewStatusWatcher(source StatusSource, emit func(Snapshot)) *StatusWatcher {
-	exited := make(chan struct{})
-	close(exited)
-	return &StatusWatcher{source: source, emit: emit, exited: exited}
+	return newStatusWatcher(source, sleepContext, emit)
 }
 
-// Start collects, unless it already does. A collector that stopped on its
-// own is started again.
+func newStatusWatcher(source StatusSource, sleep Sleep, emit func(Snapshot)) *StatusWatcher {
+	exited := make(chan struct{})
+	close(exited)
+	return &StatusWatcher{source: source, sleep: sleep, emit: emit, exited: exited}
+}
+
+// Start collects, unless it already does. WatchStatus restarts a collector
+// that stops on its own until Stop.
 func (w *StatusWatcher) Start() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -50,12 +53,8 @@ func (w *StatusWatcher) Start() {
 		defer close(exited)
 		// One collector at a time: the last one may still be exiting.
 		<-previous
-		err := WatchStatus(ctx, w.source, func(s Snapshot) { w.send(run, s) })
-		if errors.Is(err, context.Canceled) {
-			return
-		}
-		log.Printf("engine: status stopped: %v", err)
-		w.finished(run)
+		// Returns only once Stop cancels ctx.
+		_ = WatchStatus(ctx, w.source, w.sleep, func(s Snapshot) { w.send(run, s) })
 	}()
 }
 
@@ -70,17 +69,6 @@ func (w *StatusWatcher) Stop() {
 	w.cancel()
 	w.cancel = nil
 	w.run++
-}
-
-// finished marks run as over when its collector stopped on its own, so the
-// next Start begins a new one.
-func (w *StatusWatcher) finished(run uint64) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	if run == w.run && w.cancel != nil {
-		w.cancel()
-		w.cancel = nil
-	}
 }
 
 func (w *StatusWatcher) send(run uint64, s Snapshot) {

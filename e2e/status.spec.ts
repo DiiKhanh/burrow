@@ -152,7 +152,7 @@ const PROTOTYPE_BENTO = [
 
 test("lays the cards out as the prototype's 4x2 bento", async ({ page }) => {
   await page.keyboard.press("Meta+2");
-  const cards = page.getByRole("tabpanel", { name: "Status" }).locator(".rounded-card");
+  const cards = page.getByRole("tabpanel", { name: "Status" }).locator(".grid-bento > *");
   await expect(cards).toHaveCount(8);
 
   const boxes = await cards.evaluateAll((elements) =>
@@ -163,4 +163,52 @@ test("lays the cards out as the prototype's 4x2 bento", async ({ page }) => {
   );
   expect(boxes).toEqual(PROTOTYPE_BENTO);
   await expect(card(page, "Health")).toHaveJSProperty("offsetLeft", 32);
+});
+
+test("lists the top processes by CPU under the bento", async ({ page }) => {
+  await page.keyboard.press("Meta+2");
+  await sendStatus(page, snapshot());
+
+  const table = page.getByRole("table", { name: "Top processes" });
+  await expect(table.getByRole("row")).toHaveCount(6);
+  await expect(table.getByRole("row").nth(1)).toHaveText(/Safari\s*140%\s*1\.24 GB\s*512/);
+  await expect(table.getByRole("columnheader", { name: "CPU" })).toHaveAttribute("aria-sort", "descending");
+  await table.getByRole("columnheader", { name: "Memory" }).click();
+  await expect(table.getByRole("row").nth(1)).toContainText("Safari");
+});
+
+test("keeps the process table at least 220px tall in a short window", async ({ page }) => {
+  await page.setViewportSize({ width: 760, height: 420 });
+  await page.keyboard.press("Meta+2");
+  await sendStatus(page, snapshot());
+
+  const table = page.getByRole("table", { name: "Top processes" }).locator("..");
+  expect((await table.boundingBox())?.height).toBeGreaterThanOrEqual(220);
+});
+
+test("dims the last values while the collector restarts, then recovers", async ({ page }) => {
+  await page.keyboard.press("Meta+2");
+  await sendStatus(page, snapshot());
+  const dimmed = card(page, "CPU").locator("xpath=ancestor::div[contains(@class, 'transition-opacity')]");
+  await expect(dimmed).toHaveCSS("opacity", "1");
+
+  await sendStatus(page, snapshot({ collector: "retrying" }));
+  await expect(page.getByRole("status")).toHaveText("Status paused, retrying…");
+  await expect(card(page, "CPU")).toContainText("30%");
+  await expect(page.getByRole("table", { name: "Top processes" })).toContainText("Safari");
+  await expect(dimmed).toHaveCSS("opacity", "0.5");
+
+  await sendStatus(page, snapshot({ cpu: { usage: 55 } }));
+  await expect(page.getByRole("status")).toHaveCount(0);
+  await expect(card(page, "CPU")).toContainText("55%");
+  await expect(dimmed).toHaveCSS("opacity", "1");
+});
+
+test("keeps the retrying notice in view while scrolled to the process table", async ({ page }) => {
+  await page.setViewportSize({ width: 760, height: 420 });
+  await page.keyboard.press("Meta+2");
+  await sendStatus(page, snapshot({ collector: "retrying" }));
+
+  await page.getByRole("table", { name: "Top processes" }).scrollIntoViewIfNeeded();
+  await expect(page.getByRole("status")).toBeInViewport();
 });

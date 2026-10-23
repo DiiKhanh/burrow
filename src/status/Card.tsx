@@ -39,7 +39,8 @@ export function EmptyCard() {
 
 const CARD = "flex min-w-0 flex-col gap-3 rounded-card border border-line bg-surface p-4";
 
-function Label({ children }: { children: ReactNode }) {
+/** A small uppercase heading, e.g. a card's title. */
+export function Label({ children }: { children: ReactNode }) {
   return (
     <span className="flex shrink-0 items-center gap-1.5 font-semibold text-label uppercase tracking-label">
       {children}

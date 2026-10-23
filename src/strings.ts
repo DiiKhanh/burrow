@@ -200,6 +200,16 @@ export const strings = {
       fan: (rpm: string) => `${rpm} RPM`,
       fanUnavailable: "Fan -",
     },
+    processes: {
+      title: "Top processes",
+      name: "Process",
+      cpu: "CPU",
+      /** After the CPU heading: the one order the table has. */
+      sorted: "▾",
+      memory: "Memory",
+      pid: "PID",
+    },
+    retrying: "Status paused, retrying…",
   },
   /** Shown in place of a value that could not be read. */
   unavailable: "-",

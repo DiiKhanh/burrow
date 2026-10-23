@@ -1,6 +1,7 @@
 package mole
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -10,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -29,6 +31,7 @@ type StatusSample struct {
 	DiskIO        DiskIO            `json:"diskIO"`
 	Thermal       Thermal           `json:"thermal"`
 	Bluetooth     []BluetoothDevice `json:"bluetooth"`
+	Processes     []Process         `json:"processes"`
 }
 
 // HealthScore is Mole's 0-100 Health score with its level and the issues
@@ -164,6 +167,20 @@ type BluetoothDevice struct {
 	Name           string `json:"name"`
 	BatteryPercent *int   `json:"batteryPercent"`
 }
+
+// Process is one of the busiest processes on the Mac.
+type Process struct {
+	PID  int     `json:"pid"`
+	Name *string `json:"name"`
+	// CPU is the share of one core in use, in percent, as ps reports it:
+	// a process busy on two cores shows 200.
+	CPU float64 `json:"cpu"`
+	// MemoryBytes is the resident memory.
+	MemoryBytes *uint64 `json:"memoryBytes"`
+}
+
+// TopProcesses is how many processes Status lists.
+const TopProcesses = 5
 
 // The words of Mole's health_score_msg, "<level>: <reason>, <reason>"
 // (cmd/status/metrics_health.go).
@@ -327,6 +344,12 @@ type snapshot struct {
 		Connected bool    `json:"connected"`
 		Battery   *string `json:"battery"`
 	} `json:"bluetooth"`
+	TopProcesses []struct {
+		PID         int     `json:"pid"`
+		Name        *string `json:"name"`
+		CPU         float64 `json:"cpu"`
+		MemoryBytes *uint64 `json:"memory_bytes"`
+	} `json:"top_processes"`
 }
 
 func (s snapshot) sample(machineHasBattery *bool) StatusSample {
@@ -362,6 +385,7 @@ func (s snapshot) sample(machineHasBattery *bool) StatusSample {
 		DiskIO:    s.diskIO(),
 		Thermal:   thermal,
 		Bluetooth: s.bluetoothDevices(),
+		Processes: s.topProcesses(),
 	}
 }
 
@@ -505,6 +529,18 @@ func (s snapshot) bluetoothDevices() []BluetoothDevice {
 		devices = append(devices, device)
 	}
 	return devices
+}
+
+// topProcesses keeps the TopProcesses busiest by CPU, busiest first. Mole
+// already ranks them; sorting again keeps that promise if it ever stops.
+func (s snapshot) topProcesses() []Process {
+	var processes []Process
+	for _, p := range s.TopProcesses {
+		// Mole leaves memory_bytes out when ps reports no resident memory.
+		processes = append(processes, Process{PID: p.PID, Name: nonEmpty(p.Name), CPU: p.CPU, MemoryBytes: p.MemoryBytes})
+	}
+	slices.SortStableFunc(processes, func(a, b Process) int { return cmp.Compare(b.CPU, a.CPU) })
+	return processes[:min(len(processes), TopProcesses)]
 }
 
 func mebibytesToBytes(value *float64) *float64 {

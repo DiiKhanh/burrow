@@ -4,7 +4,9 @@ package engine
 
 import (
 	"context"
+	"log"
 	"slices"
+	"time"
 
 	"github.com/DiiKhanh/burrow/internal/mole"
 )
@@ -32,8 +34,22 @@ type Snapshot struct {
 	DiskIO        mole.DiskIO            `json:"diskIO"`
 	Thermal       mole.Thermal           `json:"thermal"`
 	Bluetooth     []mole.BluetoothDevice `json:"bluetooth"`
-	Series        Series                 `json:"series"`
+	// Processes are the busiest by CPU, busiest first.
+	Processes []mole.Process `json:"processes"`
+	Series    Series         `json:"series"`
+	Collector CollectorState `json:"collector"`
 }
+
+// CollectorState says whether the values are live.
+type CollectorState string
+
+const (
+	// CollectorRunning: the values are the latest sample.
+	CollectorRunning CollectorState = "running"
+	// CollectorRetrying: the collector stopped and Burrow is starting it
+	// again. The values are the last ones it sent.
+	CollectorRetrying CollectorState = "retrying"
+)
 
 // Series holds up to SeriesLength samples per sparkline, oldest first. A
 // nil sample was missing from its reading.
@@ -47,33 +63,91 @@ type Series struct {
 }
 
 // WatchStatus sends a Snapshot to emit for every sample of source until ctx
-// ends or source stops, and returns why it stopped.
-func WatchStatus(ctx context.Context, source StatusSource, emit func(Snapshot)) error {
-	var cpu, memory, network, diskRead, thermal []*float64
-	return source(ctx, func(s mole.StatusSample) {
-		cpu = latest(cpu, s.CPU.Usage)
-		memory = latest(memory, s.Memory.UsedPercent)
-		network = latest(network, s.Network.DownloadBytesPerSecond)
-		diskRead = latest(diskRead, s.DiskIO.ReadBytesPerSecond)
-		thermal = latest(thermal, s.Thermal.CPUCelsius)
-		emit(Snapshot{
-			HealthScore:   s.HealthScore,
-			Hardware:      s.Hardware,
-			UptimeSeconds: s.UptimeSeconds,
-			CPU:           s.CPU,
-			Memory:        s.Memory,
-			Network:       s.Network,
-			Battery:       s.Battery,
-			Power:         s.Power,
-			Disk:          s.Disk,
-			DiskIO:        s.DiskIO,
-			Thermal:       s.Thermal,
-			Bluetooth:     s.Bluetooth,
-			Series: Series{
-				CPU: cpu, Memory: memory, NetworkDownload: network, DiskRead: diskRead, ThermalCPU: thermal,
-			},
+// ends, and returns ctx's error. When the collector stops on its own it
+// sends the last values again as CollectorRetrying, waits with sleep and
+// starts it again: 1s, then twice as long after each run that sent
+// nothing, up to 30s. History goes on across restarts.
+func WatchStatus(ctx context.Context, source StatusSource, sleep Sleep, emit func(Snapshot)) error {
+	var series Series
+	// What a restart before the first sample shows: nothing read yet. Like
+	// Mole before it knows the model, it keeps the Battery card in place.
+	last := Snapshot{Battery: &mole.Battery{}}
+	delay := firstRetry
+	for {
+		recovered := false
+		err := source(ctx, func(s mole.StatusSample) {
+			recovered = true
+			series = series.next(s)
+			last = snapshotOf(s, series)
+			emit(last)
 		})
-	})
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		log.Printf("engine: status collector stopped: %v", err)
+		if recovered {
+			delay = firstRetry
+		}
+		paused := last
+		paused.Collector = CollectorRetrying
+		emit(paused)
+		if err := sleep(ctx, delay); err != nil {
+			return err
+		}
+		delay = min(2*delay, lastRetry)
+	}
+}
+
+// Sleep waits d or until ctx ends, and then returns ctx's error.
+type Sleep func(ctx context.Context, d time.Duration) error
+
+// How long WatchStatus waits before restarting a collector.
+const (
+	firstRetry = time.Second
+	lastRetry  = 30 * time.Second
+)
+
+func sleepContext(ctx context.Context, d time.Duration) error {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+	case <-timer.C:
+	}
+	return ctx.Err()
+}
+
+// next returns the series with s added. It never changes series, which an
+// emitted Snapshot may hold.
+func (series Series) next(s mole.StatusSample) Series {
+	return Series{
+		CPU:             latest(series.CPU, s.CPU.Usage),
+		Memory:          latest(series.Memory, s.Memory.UsedPercent),
+		NetworkDownload: latest(series.NetworkDownload, s.Network.DownloadBytesPerSecond),
+		DiskRead:        latest(series.DiskRead, s.DiskIO.ReadBytesPerSecond),
+		ThermalCPU:      latest(series.ThermalCPU, s.Thermal.CPUCelsius),
+	}
+}
+
+// snapshotOf is what the Status tab shows for s, live.
+func snapshotOf(s mole.StatusSample, series Series) Snapshot {
+	return Snapshot{
+		HealthScore:   s.HealthScore,
+		Hardware:      s.Hardware,
+		UptimeSeconds: s.UptimeSeconds,
+		CPU:           s.CPU,
+		Memory:        s.Memory,
+		Network:       s.Network,
+		Battery:       s.Battery,
+		Power:         s.Power,
+		Disk:          s.Disk,
+		DiskIO:        s.DiskIO,
+		Thermal:       s.Thermal,
+		Bluetooth:     s.Bluetooth,
+		Processes:     s.Processes,
+		Series:        series,
+		Collector:     CollectorRunning,
+	}
 }
 
 // latest returns a new series of the last SeriesLength samples ending

@@ -220,3 +220,67 @@ describe("remaining Status cards", () => {
     expect(card("Thermal").getByText("Fan -")).toBeVisible();
   });
 });
+
+describe("Process table", () => {
+  function rows() {
+    const table = screen.getByRole("table", { name: "Top processes" });
+    return within(table)
+      .getAllByRole("row")
+      .map((row) =>
+        [...within(row).queryAllByRole("columnheader"), ...within(row).queryAllByRole("cell")].map(
+          (cell) => cell.textContent,
+        ),
+      );
+  }
+
+  it("lists Mole's top 5 processes by CPU with memory and PID", () => {
+    render(<StatusTab />);
+    show(snapshot());
+    expect(rows()).toEqual([
+      ["Process", "CPU▾", "Memory", "PID"],
+      ["Safari", "140%", "1.24 GB", "512"],
+      ["WindowServer", "12.5%", "210 MB", "88"],
+      ["Code Helper (Renderer)", "8.1%", "640 MB", "4210"],
+      ["mds_stores", "3%", "90.5 MB", "412"],
+      ["Dock", "0.4%", "52 MB", "97"],
+    ]);
+  });
+
+  it("is only sorted by CPU and offers nothing to click", () => {
+    render(<StatusTab />);
+    show(snapshot());
+    const table = within(screen.getByRole("table", { name: "Top processes" }));
+    expect(table.getByRole("columnheader", { name: "CPU" })).toHaveAttribute("aria-sort", "descending");
+    expect(table.queryAllByRole("button")).toEqual([]);
+  });
+
+  it("shows a dash for a name or memory Mole did not report", () => {
+    render(<StatusTab />);
+    show(snapshot({ processes: [{ pid: 7, name: null, cpu: 3, memoryBytes: null }] }));
+    expect(rows()[1]).toEqual(["-", "3%", "-", "7"]);
+  });
+
+  it("keeps its header until the first snapshot arrives", () => {
+    render(<StatusTab />);
+    expect(rows()).toEqual([["Process", "CPU▾", "Memory", "PID"]]);
+  });
+});
+
+describe("Status recovery", () => {
+  it("says Status is retrying and keeps the last values while the collector restarts", () => {
+    render(<StatusTab />);
+    show(snapshot());
+    show(snapshot({ collector: "retrying" }));
+    expect(screen.getByRole("status")).toHaveTextContent("Status paused, retrying…");
+    expect(card("CPU").getByText("30")).toBeVisible();
+    expect(screen.getByRole("table", { name: "Top processes" })).toHaveTextContent("Safari");
+  });
+
+  it("goes back to live values once the collector sends again", () => {
+    render(<StatusTab />);
+    show(snapshot({ collector: "retrying" }));
+    show(snapshot({ cpu: { usage: 55 } }));
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(card("CPU").getByText("55")).toBeVisible();
+  });
+});

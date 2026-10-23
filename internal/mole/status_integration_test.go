@@ -38,4 +38,9 @@ func TestIntegrationBundledStatusStreamsSamples(t *testing.T) {
 	if last.UptimeSeconds == nil {
 		t.Error("uptime is missing")
 	}
+	if n := len(last.Processes); n != TopProcesses {
+		t.Errorf("got %d processes, want the top %d", n, TopProcesses)
+	} else if top := last.Processes[0]; top.PID <= 0 || top.Name == nil {
+		t.Errorf("busiest process = %+v, want a PID and a name", top)
+	}
 }

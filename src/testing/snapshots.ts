@@ -52,6 +52,13 @@ export function snapshot(overrides: SnapshotOverrides = {}): Snapshot {
     diskIO: { readBytesPerSecond: 2_500_000, writeBytesPerSecond: 400_000 },
     thermal: { cpuCelsius: 52.5, systemWatts: 12.933, hasFan: false, fanRPM: null },
     bluetooth: [{ name: "Magic Mouse", batteryPercent: 64 }],
+    processes: [
+      { pid: 512, name: "Safari", cpu: 140.24, memoryBytes: 1_240_000_000 },
+      { pid: 88, name: "WindowServer", cpu: 12.53, memoryBytes: 210_000_000 },
+      { pid: 4_210, name: "Code Helper (Renderer)", cpu: 8.1, memoryBytes: 640_000_000 },
+      { pid: 412, name: "mds_stores", cpu: 3, memoryBytes: 90_500_000 },
+      { pid: 97, name: "Dock", cpu: 0.4, memoryBytes: 52_000_000 },
+    ],
     series: {
       cpu: cpuSeries,
       memory: memorySeries,
@@ -59,6 +66,7 @@ export function snapshot(overrides: SnapshotOverrides = {}): Snapshot {
       diskRead: diskReadSeries,
       thermalCPU: thermalSeries,
     },
+    collector: "running",
   };
   return {
     healthScore: { ...base.healthScore, ...overrides.healthScore },
@@ -73,6 +81,8 @@ export function snapshot(overrides: SnapshotOverrides = {}): Snapshot {
     diskIO: { ...base.diskIO, ...overrides.diskIO },
     thermal: { ...base.thermal, ...overrides.thermal },
     bluetooth: overrides.bluetooth === undefined ? base.bluetooth : overrides.bluetooth,
+    processes: overrides.processes === undefined ? base.processes : overrides.processes,
     series: { ...base.series, ...overrides.series },
+    collector: overrides.collector === undefined ? base.collector : overrides.collector,
   };
 }
