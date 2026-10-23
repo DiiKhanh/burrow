@@ -16,7 +16,51 @@ import (
 	"time"
 
 	"github.com/DiiKhanh/burrow/internal/clean"
+	"github.com/DiiKhanh/burrow/internal/testhome"
 )
+
+func TestScannerProgressErrorStopsTheWholeMoleProcessGroup(t *testing.T) {
+	home := t.TempDir()
+	bundleDir := t.TempDir()
+	fakeBundle(t, bundleDir)
+	script := `#!/bin/sh
+set -eu
+sleep 30 &
+child=$!
+printf '%s\n' "$child" > "$HOME/child.pid"
+printf '➤ App caches\n'
+wait "$child"
+`
+	if err := os.WriteFile(filepath.Join(bundleDir, MoPath), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	wantErr := errors.New("progress receiver closed")
+	done := make(chan error, 1)
+	scanner := NewScanner(Bundle{dir: bundleDir}, home, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	go func() {
+		_, err := scanner.Scan(context.Background(), func(clean.ScanProgress) error {
+			return wantErr
+		})
+		done <- err
+	}()
+
+	childPID := waitForChildPID(t, filepath.Join(home, "child.pid"))
+	select {
+	case err := <-done:
+		if !errors.Is(err, wantErr) {
+			t.Fatalf("Scan error = %v, want %v", err, wantErr)
+		}
+	case <-time.After(500 * time.Millisecond):
+		_ = syscall.Kill(childPID, syscall.SIGKILL)
+		cleanupErr := <-done
+		t.Fatalf("Scan stayed alive after a progress error because a Mole child survived; cleanup returned %v", cleanupErr)
+	}
+	if err := syscall.Kill(childPID, 0); !errors.Is(err, syscall.ESRCH) {
+		_ = syscall.Kill(childPID, syscall.SIGKILL)
+		t.Fatalf("Mole child %d still exists after progress error: %v", childPID, err)
+	}
+}
 
 func TestScannerCancellationStopsTheWholeMoleProcessGroup(t *testing.T) {
 	home := t.TempDir()
@@ -41,23 +85,7 @@ wait "$child"
 		done <- err
 	}()
 
-	pidPath := filepath.Join(home, "child.pid")
-	var childPID int
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		data, err := os.ReadFile(pidPath)
-		if err == nil {
-			childPID, err = strconv.Atoi(strings.TrimSpace(string(data)))
-			if err != nil {
-				t.Fatal(err)
-			}
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	if childPID == 0 {
-		t.Fatal("fake Mole did not start its child")
-	}
+	childPID := waitForChildPID(t, filepath.Join(home, "child.pid"))
 	cancel()
 
 	select {
@@ -91,7 +119,6 @@ test "$1" = clean
 test "$2" = --dry-run
 mkdir -p "$HOME/.config/mole"
 printf '➤ App caches\n'
-printf 'measuring %s\n' "$HOME/Library/Caches/Burrow/cache.data"
 cat > "$HOME/.config/mole/clean-list.txt" <<EOF
 === App caches ===
 $HOME/Library/Caches/Burrow/cache.data  # 999GB
@@ -139,18 +166,28 @@ EOF
 
 func TestParseCleanListMapsSafeJunkAndMeasuresTheFilesystem(t *testing.T) {
 	home := t.TempDir()
+	if _, err := testhome.Generate(home); err != nil {
+		t.Fatal(err)
+	}
 	files := map[string]string{
-		"Library/Caches/hash # café/cache.bin":                    "eleven bytes",
-		"Library/Caches/Office/unknown.bin":                       "1234567",
-		"Library/Logs/Burrow/session.log":                         "log",
-		".Trash/old.data":                                         "trash",
-		"Library/Application Support/example/state.db":            "state",
-		"Library/Caches/com.apple.rosetta.update/update.bin":      "rosetta",
-		"Library/iTunes/iPhone Software Updates/device.ipsw":      "firmware",
-		"Library/iTunes/iPhone Software Updates/covered.ipsw":     "covered",
-		"Library/Application Support/MobileSync/Backup/backup.db": "backup",
-		"Downloads/movie.mov":                                     "hidden",
-		"future.data":                                             "unknown",
+		"Library/Caches/hash # café/cache.bin":                      "eleven bytes",
+		"Library/Caches/Office/unknown.bin":                         "1234567",
+		"Library/Caches/AppUtility/cache.bin":                       "utility",
+		"Library/Caches/io.github.diikhanh.burrow/cache.data":       strings.Repeat("a", 4_096),
+		"Library/Caches/Google/Chrome/Cache/browser.bin":            "browser",
+		".Trash/section.data":                                       "section trash",
+		"Library/Developer/Xcode/DerivedData/Burrow/Build/object.o": strings.Repeat("d", 5_120),
+		"Library/Application Support/example/state.db":              "state",
+		"Library/Application Support/OrphanedApp/cache.bin":         "leftover",
+		"Library/Caches/com.apple.rosetta.update/update.bin":        "rosetta",
+		"Library/iTunes/iPhone Software Updates/Burrow.ipsw":        strings.Repeat("f", 6_144),
+		"Library/iTunes/iPhone Software Updates/covered.ipsw":       "covered",
+		"Library/Application Support/MobileSync/Backup/backup.db":   "backup",
+		"Library/Containers/com.docker.docker/Data/vms/0/data.bin":  "virtual",
+		"Downloads/movie.mov":                                       "hidden",
+		"Projects/Burrow/node_modules/cache.bin":                    "project",
+		"Volumes/External/cache.bin":                                "external",
+		"future.data":                                               "unknown",
 	}
 	for path, content := range files {
 		writeTestFile(t, filepath.Join(home, filepath.FromSlash(path)), content)
@@ -171,19 +208,34 @@ func TestParseCleanListMapsSafeJunkAndMeasuresTheFilesystem(t *testing.T) {
 
 	want := map[string]map[string]int64{
 		"app-caches": {
-			filepath.Join(home, "Library/Caches/hash # café/cache.bin"):               12,
-			filepath.Join(home, "Library/Caches/Office/unknown.bin"):                  7,
-			filepath.Join(home, "Library/Caches/com.apple.rosetta.update/update.bin"): 7,
+			filepath.Join(home, "Library/Caches/hash # café/cache.bin"):                12,
+			filepath.Join(home, "Library/Caches/Office/unknown.bin"):                   7,
+			filepath.Join(home, "Library/Caches/AppUtility/cache.bin"):                 7,
+			filepath.Join(home, "Library/Caches/io.github.diikhanh.burrow/cache.data"): 4_096,
+			filepath.Join(home, "Library/Caches/com.apple.rosetta.update/update.bin"):  7,
+		},
+		"browsers": {
+			filepath.Join(home, "Library/Caches/Google/Chrome/Cache/browser.bin"): 7,
 		},
 		"logs-saved-state": {
-			filepath.Join(home, "Library/Logs/Burrow/session.log"):              3,
+			filepath.Join(home, "Library/Logs/Burrow/scan.log"):                 2_048,
 			filepath.Join(home, "Library/Application Support/example/state.db"): 5,
 		},
 		"trash": {
-			filepath.Join(home, ".Trash/old.data"): 5,
+			filepath.Join(home, ".Trash/old-download.data"): 3_072,
+			filepath.Join(home, ".Trash/section.data"):      13,
+		},
+		"developer-tools": {
+			filepath.Join(home, "Library/Developer/Xcode/DerivedData/Burrow/Build/object.o"): 5_120,
+		},
+		"virtualization": {
+			filepath.Join(home, "Library/Containers/com.docker.docker/Data/vms/0/data.bin"): 7,
+		},
+		"app-leftovers": {
+			filepath.Join(home, "Library/Application Support/OrphanedApp/cache.bin"): 8,
 		},
 		"device-firmware": {
-			filepath.Join(home, "Library/iTunes/iPhone Software Updates/device.ipsw"): 8,
+			filepath.Join(home, "Library/iTunes/iPhone Software Updates/Burrow.ipsw"): 6_144,
 		},
 	}
 	gotItems := make(map[string]map[string]int64)
@@ -197,6 +249,36 @@ func TestParseCleanListMapsSafeJunkAndMeasuresTheFilesystem(t *testing.T) {
 	}
 	if !mapsEqual(gotItems, want) {
 		t.Fatalf("items = %#v, want %#v", gotItems, want)
+	}
+	wantPolicies := map[clean.JunkGroupID]struct {
+		method   clean.RemovalMethod
+		selected bool
+	}{
+		clean.AppCaches:      {method: clean.Delete, selected: true},
+		clean.Browsers:       {method: clean.Delete, selected: true},
+		clean.LogsSavedState: {method: clean.Delete, selected: true},
+		clean.Trash:          {method: clean.Delete, selected: true},
+		clean.DeveloperTools: {method: clean.Delete},
+		clean.Virtualization: {method: clean.MoveToTrash},
+		clean.AppLeftovers:   {method: clean.MoveToTrash, selected: true},
+		clean.DeviceFirmware: {method: clean.MoveToTrash},
+	}
+	for _, group := range got.Groups {
+		wantPolicy := wantPolicies[group.ID]
+		if group.RemovalMethod != wantPolicy.method || group.DefaultSelected != wantPolicy.selected {
+			t.Errorf("group %s policy = (%s, %t), want (%s, %t)", group.ID, group.RemovalMethod, group.DefaultSelected, wantPolicy.method, wantPolicy.selected)
+		}
+	}
+	coveredSections := make(map[string]bool)
+	for _, line := range strings.Split(input, "\n") {
+		if match := sectionLine.FindStringSubmatch(line); match != nil {
+			coveredSections[match[1]] = true
+		}
+	}
+	for section := range sectionRules {
+		if !coveredSections[section] {
+			t.Errorf("golden clean-list does not cover Mole section %q", section)
+		}
 	}
 	if !strings.Contains(logs.String(), `section="Future Mole section"`) {
 		t.Fatalf("logs = %q, want unknown section", logs.String())
@@ -215,6 +297,24 @@ func TestParseCleanListMapsSafeJunkAndMeasuresTheFilesystem(t *testing.T) {
 	if strings.Join(firstIDs, "|") != strings.Join(secondIDs, "|") {
 		t.Fatalf("ids changed between equal scans: %q != %q", firstIDs, secondIDs)
 	}
+}
+
+func waitForChildPID(t *testing.T, path string) int {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		data, err := os.ReadFile(path)
+		if err == nil {
+			pid, conversionErr := strconv.Atoi(strings.TrimSpace(string(data)))
+			if conversionErr != nil {
+				t.Fatal(conversionErr)
+			}
+			return pid
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("fake Mole did not start its child")
+	return 0
 }
 
 func writeTestFile(t *testing.T, path, content string) {

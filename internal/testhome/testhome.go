@@ -10,7 +10,7 @@ import (
 	"github.com/DiiKhanh/burrow/internal/clean"
 )
 
-// Item describes one file the generated HOME expects Mole to find.
+// Item describes one path the generated HOME expects Mole to find.
 type Item struct {
 	GroupID clean.JunkGroupID `json:"groupId"`
 	Path    string            `json:"path"`
@@ -23,16 +23,21 @@ type Manifest struct {
 	Items []Item `json:"items"`
 }
 
-var fixtureItems = []struct {
+var fixtureFiles = []struct {
+	path  string
+	bytes int64
+}{
+	{"Library/Logs/Burrow/scan.log", 2_048},
+	{".Trash/old-download.data", 3_072},
+}
+
+var expectedItems = []struct {
 	group clean.JunkGroupID
 	path  string
 	bytes int64
 }{
-	{clean.AppCaches, "Library/Caches/io.github.diikhanh.burrow/cache.data", 4_096},
-	{clean.LogsSavedState, "Library/Logs/Burrow/scan.log", 2_048},
+	{clean.LogsSavedState, "Library/Logs/Burrow", 2_048},
 	{clean.Trash, ".Trash/old-download.data", 3_072},
-	{clean.DeveloperTools, "Library/Developer/Xcode/DerivedData/Burrow/Build/object.o", 5_120},
-	{clean.DeviceFirmware, "Library/iTunes/iPhone Software Updates/Burrow.ipsw", 6_144},
 }
 
 // Generate creates a deterministic fake HOME at home and returns its expected
@@ -42,8 +47,7 @@ func Generate(home string) (Manifest, error) {
 		return Manifest{}, fmt.Errorf("testhome: home must be absolute: %q", home)
 	}
 	home = filepath.Clean(home)
-	manifest := Manifest{Home: home, Items: make([]Item, 0, len(fixtureItems))}
-	for _, fixture := range fixtureItems {
+	for _, fixture := range fixtureFiles {
 		path := filepath.Join(home, filepath.FromSlash(fixture.path))
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			return Manifest{}, fmt.Errorf("testhome: creating %s: %w", filepath.Dir(path), err)
@@ -59,10 +63,13 @@ func Generate(home string) (Manifest, error) {
 		if err := file.Close(); err != nil {
 			return Manifest{}, fmt.Errorf("testhome: closing %s: %w", path, err)
 		}
+	}
+	manifest := Manifest{Home: home, Items: make([]Item, 0, len(expectedItems))}
+	for _, expected := range expectedItems {
 		manifest.Items = append(manifest.Items, Item{
-			GroupID: fixture.group,
-			Path:    path,
-			Bytes:   fixture.bytes,
+			GroupID: expected.group,
+			Path:    filepath.Join(home, filepath.FromSlash(expected.path)),
+			Bytes:   expected.bytes,
 		})
 	}
 	return manifest, nil

@@ -1,34 +1,60 @@
 # Mole Cleanup Preview - ignored metadata
 
+=== User essentials ===
+{HOME}/Library/Logs/Burrow/scan.log  # 1B
+{HOME}/.Trash/old-download.data  # 1B
+
 === App caches ===
 {HOME}/Library/Caches/hash # café/cache.bin  # 99GB
+{HOME}/Library/Caches/io.github.diikhanh.burrow/cache.data  # 1B
+
+=== Browsers ===
+{HOME}/Library/Caches/Google/Chrome/Cache/browser.bin  # 1B
 
 === Cloud & Office ===
 {HOME}/Library/Caches/Office/unknown.bin  # size unknown
 
-=== User essentials ===
-{HOME}/Library/Logs/Burrow/session.log  # 1B
-{HOME}/.Trash/old.data  # 1B
+=== Developer tools ===
+{HOME}/Library/Developer/Xcode/DerivedData/Burrow/Build/object.o  # 1B
+/var/tmp/mole-outside-home.cache  # 1GB
+
+=== Apps & utilities ===
+{HOME}/Library/Caches/AppUtility/cache.bin  # 1B
+
+=== Virtualization ===
+{HOME}/Library/Containers/com.docker.docker/Data/vms/0/data.bin  # 1B
 
 === Application Support ===
 {HOME}/Library/Application Support/example/state.db  # 1B
+
+=== App leftovers ===
+{HOME}/Library/Application Support/OrphanedApp/cache.bin  # 1B
 
 === Apple Silicon updates ===
 {HOME}/Library/Caches/com.apple.rosetta.update/update.bin  # 1B
 
 === Device backups & firmware ===
-{HOME}/Library/iTunes/iPhone Software Updates/device.ipsw  # 1B
+{HOME}/Library/iTunes/iPhone Software Updates/Burrow.ipsw  # 1B
 {HOME}/Library/Application Support/MobileSync/Backup/backup.db  # 1B
-{HOME}/Library/iTunes/iPhone Software Updates/covered.ipsw  # 1B, counted under {HOME}/Library/iTunes/iPhone Software Updates/device.ipsw
+{HOME}/Library/iTunes/iPhone Software Updates/covered.ipsw  # 1B, counted under {HOME}/Library/iTunes/iPhone Software Updates/Burrow.ipsw
+
+=== User Trash ===
+{HOME}/.Trash/section.data  # 1B
+
+=== System ===
+/Library/Caches/system.cache  # 1GB
+
+=== Time Machine ===
+{HOME}/Library/Caches/com.apple.TimeMachine/cache.bin  # 1GB
+
+=== External volume ===
+{HOME}/Volumes/External/cache.bin  # 1GB
 
 === Large files ===
 {HOME}/Downloads/movie.mov  # 1GB
 
-=== Developer tools ===
-/var/tmp/mole-outside-home.cache  # 1GB
-
-=== System ===
-/Library/Caches/system.cache  # 1GB
+=== Project artifacts ===
+{HOME}/Projects/Burrow/node_modules/cache.bin  # 1GB
 
 === Future Mole section ===
 {HOME}/future.data  # 1B

@@ -70,13 +70,13 @@
 .scan-layer-progress {
   appearance: none;
   border: 0;
-  background: transparent;
+  background: var(--color-transparent);
   color: var(--color-size);
   opacity: 0.22;
 }
 
 .scan-layer-progress::-webkit-progress-bar {
-  background: transparent;
+  background: var(--color-transparent);
 }
 
 .scan-layer-progress::-webkit-progress-value {
@@ -85,7 +85,7 @@
 }
 
 .scan-layer-progress:indeterminate {
-  background: linear-gradient(90deg, transparent 0%, var(--color-size) 50%, transparent 100%);
+  background: linear-gradient(90deg, var(--color-transparent) 0%, var(--color-size) 50%, var(--color-transparent) 100%);
   background-size: 45% 100%;
   animation: scan-indeterminate 1.4s ease-in-out infinite;
 }

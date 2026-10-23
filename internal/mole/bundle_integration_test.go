@@ -9,7 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
-	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -20,7 +20,8 @@ import (
 
 func TestIntegrationBundledMoScansTheGeneratedHome(t *testing.T) {
 	home := t.TempDir()
-	if _, err := testhome.Generate(home); err != nil {
+	manifest, err := testhome.Generate(home)
+	if err != nil {
 		t.Fatal(err)
 	}
 	var logs bytes.Buffer
@@ -28,7 +29,11 @@ func TestIntegrationBundledMoScansTheGeneratedHome(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 
-	result, err := adapter.Scan(ctx, nil)
+	var progress []clean.ScanProgress
+	result, err := adapter.Scan(ctx, func(update clean.ScanProgress) error {
+		progress = append(progress, update)
+		return nil
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,26 +49,15 @@ func TestIntegrationBundledMoScansTheGeneratedHome(t *testing.T) {
 			}{group: group.ID, bytes: item.Bytes}
 		}
 	}
-	want := map[string]struct {
+	want := make(map[string]struct {
 		group clean.JunkGroupID
 		bytes int64
-	}{
-		filepath.Join(home, "Library/Caches/io.github.diikhanh.burrow"): {
-			group: clean.LogsSavedState,
-			bytes: 4_096,
-		},
-		filepath.Join(home, "Library/Logs/Burrow"): {
-			group: clean.LogsSavedState,
-			bytes: 2_048,
-		},
-		filepath.Join(home, ".Trash/old-download.data"): {
-			group: clean.Trash,
-			bytes: 3_072,
-		},
-		filepath.Join(home, "Library/Developer/Xcode/DerivedData/Burrow"): {
-			group: clean.DeveloperTools,
-			bytes: 5_120,
-		},
+	}, len(manifest.Items))
+	for _, item := range manifest.Items {
+		want[item.Path] = struct {
+			group clean.JunkGroupID
+			bytes int64
+		}{group: item.GroupID, bytes: item.Bytes}
 	}
 	if len(got) != len(want) {
 		t.Fatalf("Scan returned %#v, want %#v", got, want)
@@ -72,6 +66,27 @@ func TestIntegrationBundledMoScansTheGeneratedHome(t *testing.T) {
 		if got[path] != expected {
 			t.Errorf("Scan item %s = %#v, want %#v", path, got[path], expected)
 		}
+		if !slices.ContainsFunc(progress, func(update clean.ScanProgress) bool {
+			return update.CurrentPath == path
+		}) {
+			t.Errorf("Scan progress never reported generated fixture path %s", path)
+		}
+	}
+	var maxFound int64
+	for _, update := range progress {
+		if update.FoundBytes < maxFound {
+			t.Errorf("live found total decreased from %d to %d", maxFound, update.FoundBytes)
+		}
+		if update.FoundBytes > maxFound {
+			maxFound = update.FoundBytes
+		}
+	}
+	var wantFound int64
+	for _, item := range manifest.Items {
+		wantFound += item.Bytes
+	}
+	if maxFound != wantFound {
+		t.Errorf("largest live found total = %d, want %d", maxFound, wantFound)
 	}
 	if strings.Contains(logs.String(), "unknown Mole section") {
 		t.Fatalf("pinned Mole emitted an unmapped section:\n%s", logs.String())

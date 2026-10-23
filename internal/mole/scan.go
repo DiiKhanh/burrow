@@ -61,7 +61,6 @@ func (s *Scanner) Scan(ctx context.Context, onProgress func(clean.ScanProgress) 
 		return clean.ScanResult{}, fmt.Errorf("starting bundled Mole: %w", err)
 	}
 
-	var active clean.JunkGroupID
 	lines := bufio.NewScanner(stdout)
 	for lines.Scan() {
 		line := strings.TrimSpace(lines.Text())
@@ -69,33 +68,16 @@ func (s *Scanner) Scan(ctx context.Context, onProgress func(clean.ScanProgress) 
 			rule, mapped := sectionRules[section]
 			if !mapped {
 				s.logger.Warn("ignoring unknown Mole section", "section", section)
-				active = ""
 			} else if rule.mode == includeSection {
-				active = rule.group
-				if err := sendProgress(onProgress, clean.ScanProgress{GroupID: active}); err != nil {
-					_ = cmd.Process.Kill()
-					_ = cmd.Wait()
-					return clean.ScanResult{}, err
-				}
-			} else {
-				active = ""
-			}
-			continue
-		}
-		if active != "" {
-			if start := strings.Index(line, s.home); start >= 0 {
-				path := strings.TrimSpace(line[start:])
-				if err := sendProgress(onProgress, clean.ScanProgress{GroupID: active, CurrentPath: path}); err != nil {
-					_ = cmd.Process.Kill()
-					_ = cmd.Wait()
+				if err := sendProgress(onProgress, clean.ScanProgress{GroupID: rule.group}); err != nil {
+					stopCommand(cmd)
 					return clean.ScanResult{}, err
 				}
 			}
 		}
 	}
 	if err := lines.Err(); err != nil {
-		_ = cmd.Process.Kill()
-		_ = cmd.Wait()
+		stopCommand(cmd)
 		return clean.ScanResult{}, fmt.Errorf("reading Mole output: %w", err)
 	}
 	if err := cmd.Wait(); err != nil {
@@ -110,7 +92,7 @@ func (s *Scanner) Scan(ctx context.Context, onProgress func(clean.ScanProgress) 
 	if err != nil {
 		return clean.ScanResult{}, fmt.Errorf("opening Mole clean-list: %w", err)
 	}
-	result, err := ParseCleanList(s.home, list, s.logger)
+	result, err := parseCleanList(s.home, list, s.logger, onProgress)
 	if err != nil {
 		_ = list.Close()
 		return clean.ScanResult{}, err
@@ -118,24 +100,16 @@ func (s *Scanner) Scan(ctx context.Context, onProgress func(clean.ScanProgress) 
 	if err := list.Close(); err != nil {
 		return clean.ScanResult{}, fmt.Errorf("closing Mole clean-list: %w", err)
 	}
-	var found int64
-	complete := 1.0
-	for _, group := range result.Groups {
-		var groupBytes int64
-		for _, item := range group.Items {
-			groupBytes += item.Bytes
-		}
-		found += groupBytes
-		if err := sendProgress(onProgress, clean.ScanProgress{
-			GroupID:    group.ID,
-			GroupBytes: groupBytes,
-			FoundBytes: found,
-			Fraction:   &complete,
-		}); err != nil {
-			return clean.ScanResult{}, err
-		}
-	}
 	return result, nil
+}
+
+func stopCommand(cmd *exec.Cmd) {
+	if cmd.Cancel != nil {
+		_ = cmd.Cancel()
+	} else if cmd.Process != nil {
+		_ = cmd.Process.Kill()
+	}
+	_ = cmd.Wait()
 }
 
 func sendProgress(send func(clean.ScanProgress) error, progress clean.ScanProgress) error {
@@ -181,8 +155,7 @@ type sectionMode uint8
 
 const (
 	includeSection sectionMode = iota
-	excludeSection
-	hideSection
+	ignoreSection
 )
 
 type sectionRule struct {
@@ -203,11 +176,11 @@ var sectionRules = map[string]sectionRule{
 	"Virtualization":            {group: clean.Virtualization},
 	"App leftovers":             {group: clean.AppLeftovers},
 	"Device backups & firmware": {group: clean.DeviceFirmware},
-	"System":                    {mode: excludeSection},
-	"Time Machine":              {mode: excludeSection},
-	"External volume":           {mode: excludeSection},
-	"Large files":               {mode: hideSection},
-	"Project artifacts":         {mode: hideSection},
+	"System":                    {mode: ignoreSection},
+	"Time Machine":              {mode: ignoreSection},
+	"External volume":           {mode: ignoreSection},
+	"Large files":               {mode: ignoreSection},
+	"Project artifacts":         {mode: ignoreSection},
 }
 
 var (
@@ -243,11 +216,15 @@ var groupPolicy = map[clean.JunkGroupID]struct {
 // ParseCleanList translates Mole's clean-list into Burrow's stable Scan
 // contract. Human-readable Mole sizes are deliberately ignored.
 func ParseCleanList(home string, input io.Reader, logger *slog.Logger) (clean.ScanResult, error) {
+	return parseCleanList(home, input, logger, nil)
+}
+
+func parseCleanList(home string, input io.Reader, logger *slog.Logger, onProgress func(clean.ScanProgress) error) (clean.ScanResult, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	home = filepath.Clean(home)
-	grouped := make(map[clean.JunkGroupID][]clean.JunkItem)
+	grouped := make(map[clean.JunkGroupID][]string)
 	var current sectionRule
 	knownSection := false
 
@@ -282,26 +259,51 @@ func ParseCleanList(home string, input io.Reader, logger *slog.Logger) (clean.Sc
 		if groupID == clean.DeviceFirmware && !strings.EqualFold(filepath.Ext(path), ".ipsw") {
 			continue
 		}
-		bytes, err := pathBytes(path)
-		if err != nil {
-			logger.Warn("could not measure junk item", "path", path, "error", err)
-			bytes = 0
-		}
-		grouped[groupID] = append(grouped[groupID], clean.JunkItem{
-			ID:    stableItemID(groupID, path),
-			Path:  path,
-			Bytes: bytes,
-		})
+		grouped[groupID] = append(grouped[groupID], path)
 	}
 	if err := scanner.Err(); err != nil {
 		return clean.ScanResult{}, fmt.Errorf("reading Mole clean-list: %w", err)
 	}
 
 	result := clean.ScanResult{Groups: make([]clean.JunkGroup, 0, len(grouped))}
+	var foundBytes int64
+	complete := 1.0
 	for _, groupID := range groupOrder {
-		items := grouped[groupID]
-		if len(items) == 0 {
+		paths := grouped[groupID]
+		if len(paths) == 0 {
 			continue
+		}
+		items := make([]clean.JunkItem, 0, len(paths))
+		var groupBytes int64
+		for _, path := range paths {
+			if err := sendProgress(onProgress, clean.ScanProgress{
+				GroupID:     groupID,
+				GroupBytes:  groupBytes,
+				FoundBytes:  foundBytes,
+				CurrentPath: path,
+			}); err != nil {
+				return clean.ScanResult{}, err
+			}
+			bytes, err := pathBytes(path)
+			if err != nil {
+				logger.Warn("could not measure junk item", "path", path, "error", err)
+				bytes = 0
+			}
+			groupBytes += bytes
+			foundBytes += bytes
+			items = append(items, clean.JunkItem{
+				ID:    stableItemID(groupID, path),
+				Path:  path,
+				Bytes: bytes,
+			})
+			if err := sendProgress(onProgress, clean.ScanProgress{
+				GroupID:     groupID,
+				GroupBytes:  groupBytes,
+				FoundBytes:  foundBytes,
+				CurrentPath: path,
+			}); err != nil {
+				return clean.ScanResult{}, err
+			}
 		}
 		policy := groupPolicy[groupID]
 		result.Groups = append(result.Groups, clean.JunkGroup{
@@ -310,6 +312,14 @@ func ParseCleanList(home string, input io.Reader, logger *slog.Logger) (clean.Sc
 			DefaultSelected: policy.selected,
 			Items:           items,
 		})
+		if err := sendProgress(onProgress, clean.ScanProgress{
+			GroupID:    groupID,
+			GroupBytes: groupBytes,
+			FoundBytes: foundBytes,
+			Fraction:   &complete,
+		}); err != nil {
+			return clean.ScanResult{}, err
+		}
 	}
 	return result, nil
 }

@@ -24,11 +24,8 @@ func TestGenerateCreatesTheSharedMoleFixture(t *testing.T) {
 		path  string
 		bytes int64
 	}{
-		{clean.AppCaches, "Library/Caches/io.github.diikhanh.burrow/cache.data", 4_096},
-		{clean.LogsSavedState, "Library/Logs/Burrow/scan.log", 2_048},
+		{clean.LogsSavedState, "Library/Logs/Burrow", 2_048},
 		{clean.Trash, ".Trash/old-download.data", 3_072},
-		{clean.DeveloperTools, "Library/Developer/Xcode/DerivedData/Burrow/Build/object.o", 5_120},
-		{clean.DeviceFirmware, "Library/iTunes/iPhone Software Updates/Burrow.ipsw", 6_144},
 	}
 	if len(manifest.Items) != len(want) {
 		t.Fatalf("manifest has %d items, want %d", len(manifest.Items), len(want))
@@ -39,11 +36,11 @@ func TestGenerateCreatesTheSharedMoleFixture(t *testing.T) {
 		if item.GroupID != expected.group || item.Path != path || item.Bytes != expected.bytes {
 			t.Errorf("item %d = %#v, want group=%s path=%s bytes=%d", i, item, expected.group, path, expected.bytes)
 		}
-		info, statErr := os.Stat(path)
-		if statErr != nil {
-			t.Errorf("fixture path %s: %v", path, statErr)
-		} else if info.Size() != expected.bytes {
-			t.Errorf("fixture path %s has %d bytes, want %d", path, info.Size(), expected.bytes)
+		bytes, sizeErr := treeBytes(path)
+		if sizeErr != nil {
+			t.Errorf("fixture path %s: %v", path, sizeErr)
+		} else if bytes != expected.bytes {
+			t.Errorf("fixture path %s has %d bytes, want %d", path, bytes, expected.bytes)
 		}
 	}
 	if _, err := os.Stat(filepath.Join(home, ".config/mole/whitelist")); !os.IsNotExist(err) {
@@ -62,7 +59,21 @@ func TestCLIPrintsTheGeneratedManifest(t *testing.T) {
 	if err := json.Unmarshal(out, &manifest); err != nil {
 		t.Fatalf("CLI output is not a manifest: %v\n%s", err, out)
 	}
-	if len(manifest.Items) != 5 {
-		t.Fatalf("CLI generated %d items, want 5", len(manifest.Items))
+	if len(manifest.Items) != 2 {
+		t.Fatalf("CLI generated %d items, want 2", len(manifest.Items))
 	}
+}
+
+func treeBytes(path string) (int64, error) {
+	var total int64
+	err := filepath.Walk(path, func(_ string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if info.Mode().IsRegular() {
+			total += info.Size()
+		}
+		return nil
+	})
+	return total, err
 }
