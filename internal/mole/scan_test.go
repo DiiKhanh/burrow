@@ -348,12 +348,15 @@ func waitForExit(pid int) error {
 	}
 }
 
+// waitForChildPID waits for the fake Mole to record its child. The shell
+// creates the file before writing it, so only a whole line is a pid. The
+// deadline is generous because a loaded machine starts processes slowly.
 func waitForChildPID(t *testing.T, path string) int {
 	t.Helper()
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
 		data, err := os.ReadFile(path)
-		if err == nil {
+		if err == nil && strings.HasSuffix(string(data), "\n") {
 			pid, conversionErr := strconv.Atoi(strings.TrimSpace(string(data)))
 			if conversionErr != nil {
 				t.Fatal(conversionErr)
