@@ -20,6 +20,7 @@ describe("App tabs", () => {
     const panels = screen.getAllByRole("tabpanel", { hidden: true });
     expect(panels).toHaveLength(2);
     expect(panels.filter((panel) => !panel.hidden)).toEqual([screen.getByRole("tabpanel", { name: "Clean" })]);
+    expect(panels[1]).not.toBeVisible();
   });
 
   it("switches tabs on click", async () => {

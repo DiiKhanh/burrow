@@ -26,7 +26,16 @@ afterEach(() => {
 describe("Status tab", () => {
   it("lays out the bento grid with Health and CPU first", () => {
     render(<StatusTab />);
-    expect(screen.getAllByRole("region").map((region) => region.getAttribute("aria-label"))).toEqual(["Health", "CPU"]);
+    expect(screen.getAllByRole("region").map((region) => region.getAttribute("aria-label"))).toEqual([
+      "Health",
+      "CPU",
+      "Memory",
+      "Network",
+      "Battery",
+      "Disk",
+      "Disk I/O",
+      "Thermal",
+    ]);
   });
 
   it("shows dashes until the first snapshot arrives", () => {
@@ -125,5 +134,89 @@ describe("CPU card", () => {
     expect(cpu.getByText("-", { selector: "p > span:first-child" })).toBeVisible();
     expect(cpu.getByText("Load - · - · -")).toBeVisible();
     expect(cpu.queryByText(/cores$/)).not.toBeInTheDocument();
+  });
+});
+
+describe("remaining Status cards", () => {
+  it("shows memory, network, disk I/O and startup-disk readings", () => {
+    render(<StatusTab />);
+    show(snapshot());
+
+    expect(card("Memory").getByText("83")).toBeVisible();
+    expect(card("Memory").getByText("Normal")).toBeVisible();
+    expect(card("Memory").getByText("14.2 GB / 17.2 GB")).toBeVisible();
+    expect(card("Memory").getByText("15.9 GB swap")).toBeVisible();
+
+    expect(card("Network").getByText("450")).toBeVisible();
+    expect(card("Network").getByText("KB/s")).toBeVisible();
+    expect(card("Network").getByText("en0")).toBeVisible();
+    expect(card("Network").getByText("Upload 57 KB/s")).toBeVisible();
+
+    expect(card("Disk").getByText("14")).toBeVisible();
+    expect(card("Disk").getByText("GB free")).toBeVisible();
+    expect(card("Disk").getByText("Used 231 GB")).toBeVisible();
+    expect(card("Disk").getByText("Purgeable 191 MB")).toBeVisible();
+    expect(card("Disk").getByText("Trash 42 MB")).toBeVisible();
+
+    expect(card("Disk I/O").getByText("2.5")).toBeVisible();
+    expect(card("Disk I/O").getByText("MB/s read")).toBeVisible();
+    expect(card("Disk I/O").getByText("Write 400 KB/s")).toBeVisible();
+  });
+
+  it("shows Battery with charging details and Bluetooth device batteries", () => {
+    render(<StatusTab />);
+    show(snapshot());
+    const battery = card("Battery");
+    expect(battery.getByText("100")).toBeVisible();
+    expect(battery.getByText("% Charged")).toBeVisible();
+    expect(battery.getByText("83% capacity")).toBeVisible();
+    expect(battery.getByText("0:00 remaining · 486 cycles")).toBeVisible();
+    expect(battery.getByText("Magic Mouse 64%")).toBeVisible();
+    expect(screen.queryByRole("region", { name: "Power" })).not.toBeInTheDocument();
+  });
+
+  it("uses Power instead of Battery on a Mac without a battery", () => {
+    render(<StatusTab />);
+    show(snapshot({ battery: null, power: { systemWatts: 9.5, adapterWatts: 30 }, bluetooth: [] }));
+    expect(screen.queryByRole("region", { name: "Battery" })).not.toBeInTheDocument();
+    const power = card("Power");
+    expect(power.getByText("9.5")).toBeVisible();
+    expect(power.getByText("W system")).toBeVisible();
+    expect(power.getByText("30 W adapter")).toBeVisible();
+  });
+
+  it("shows fan speed only when the Mac has a fan", () => {
+    render(<StatusTab />);
+    show(snapshot());
+    expect(card("Thermal").queryByText(/RPM/)).not.toBeInTheDocument();
+
+    show(snapshot({ thermal: { hasFan: true, fanRPM: 1_800 } }));
+    expect(card("Thermal").getByText("1,800 RPM")).toBeVisible();
+    expect(card("Thermal").getByText("53")).toBeVisible();
+    expect(card("Thermal").getByText("°C")).toBeVisible();
+    expect(card("Thermal").getByText("Power 12.9 W")).toBeVisible();
+  });
+
+  it("shows unavailable for every missing field without breaking a card", () => {
+    render(<StatusTab />);
+    show(
+      snapshot({
+        memory: { used: null, total: null, usedPercent: null, swapUsed: null, pressure: null },
+        network: { downloadBytesPerSecond: null, uploadBytesPerSecond: null, interface: null },
+        battery: { percent: null, state: null, timeRemaining: null, cycles: null, maximumCapacity: null },
+        power: { systemWatts: null, adapterWatts: null },
+        disk: { free: null, used: null, total: null, purgeable: null, trash: null },
+        diskIO: { readBytesPerSecond: null, writeBytesPerSecond: null },
+        thermal: { cpuCelsius: null, systemWatts: null, hasFan: null, fanRPM: null },
+        bluetooth: [],
+        series: { memory: [], networkDownload: [], diskRead: [], thermalCPU: [] },
+      }),
+    );
+
+    for (const name of ["Memory", "Network", "Battery", "Disk", "Disk I/O", "Thermal"]) {
+      expect(card(name).getAllByText("-").length).toBeGreaterThan(0);
+    }
+    expect(card("Disk").getByText("Trash Unavailable")).toBeVisible();
+    expect(card("Thermal").getByText("Fan -")).toBeVisible();
   });
 });

@@ -16,6 +16,7 @@ test.beforeEach(async ({ page }) => {
 test("opens on Clean with the navy gradient", async ({ page }) => {
   await expect(page.getByRole("tab", { name: "Clean" })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("tabpanel", { name: "Clean" })).toBeVisible();
+  await expect(page.locator('[role="tabpanel"][data-state="inactive"]')).toBeHidden();
   await expect.poll(() => windowBackground(page)).toContain(CLEAN_GRADIENT);
 });
 
@@ -23,6 +24,7 @@ test("switches tabs on click", async ({ page }) => {
   await page.getByRole("tab", { name: "Status" }).click();
   await expect(page.getByRole("tab", { name: "Status" })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("tabpanel", { name: "Status" })).toBeVisible();
+  await expect(page.locator('[role="tabpanel"][data-state="inactive"]')).toBeHidden();
   await expect.poll(() => windowBackground(page)).toContain(STATUS_GRADIENT);
 
   await page.getByRole("tab", { name: "Clean" }).click();

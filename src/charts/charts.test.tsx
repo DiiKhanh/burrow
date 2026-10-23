@@ -1,6 +1,8 @@
-import { render } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { AreaSpark } from "./AreaSpark";
 import { BarSpark } from "./BarSpark";
+import { MeterBar } from "./MeterBar";
 import { Sparkline } from "./Sparkline";
 
 function bars(container: HTMLElement) {
@@ -62,5 +64,40 @@ describe("Sparkline", () => {
   it("draws nothing without samples", () => {
     const { container } = render(<Sparkline data={[]} />);
     expect(path(container)).toBe("");
+  });
+});
+
+describe("AreaSpark", () => {
+  it("fills and strokes each run of samples without bridging a missing reading", () => {
+    const { container } = render(<AreaSpark data={[25, 50, null, 100]} max={100} slots={4} />);
+    expect([...container.querySelectorAll("path")].map((path) => path.getAttribute("d"))).toEqual([
+      "M0,29.5L80,20L80,40L0,40Z",
+      "M0,29.5L80,20",
+      "M240,1L240,40L240,40Z",
+      "M240,1",
+    ]);
+  });
+
+  it("is hidden from assistive technology", () => {
+    const { container } = render(<AreaSpark data={[50]} />);
+    expect(container.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
+  });
+});
+
+describe("MeterBar", () => {
+  it.each([
+    [0.72, "72%"],
+    [-1, "0%"],
+    [2, "100%"],
+  ])("shows %s as a %s fill", (value, width) => {
+    render(<MeterBar value={value} label="Disk used" />);
+    expect(screen.getByRole("progressbar", { name: "Disk used" })).toHaveAttribute("value", width.slice(0, -1));
+  });
+
+  it("leaves the meter empty when its value is unavailable", () => {
+    render(<MeterBar value={null} label="Disk used" />);
+    const meter = screen.getByRole("progressbar", { name: "Disk used" });
+    expect(meter).not.toHaveAttribute("aria-valuenow");
+    expect(meter).toHaveAttribute("value", "0");
   });
 });

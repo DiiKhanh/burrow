@@ -112,6 +112,54 @@ func TestWatchStatusKeepsAGapForAMissingSample(t *testing.T) {
 	}
 }
 
+func TestWatchStatusKeepsHistoryForEveryStatusChart(t *testing.T) {
+	stream := strings.Join([]string{
+		`{"memory":{"used_percent":40},"network":[{"name":"en0","rx_rate_mbs":1}],"disk_io":{"read_rate":2},"thermal":{"cpu_temp":50}}`,
+		`{"memory":{},"network":[],"disk_io":{},"thermal":{"cpu_temp":0}}`,
+		`{"memory":{"used_percent":60},"network":[{"name":"en0","rx_rate_mbs":3}],"disk_io":{"read_rate":4},"thermal":{"cpu_temp":70}}`,
+	}, "\n")
+	snapshots, err := watchAll(t, streaming(stream))
+	if err != nil {
+		t.Fatal(err)
+	}
+	last := snapshots[2]
+	wants := map[string]struct {
+		got  []*float64
+		want []*float64
+	}{
+		"memory":   {last.Series.Memory, []*float64{ptr(40.0), nil, ptr(60.0)}},
+		"network":  {last.Series.NetworkDownload, []*float64{ptr(float64(1 << 20)), nil, ptr(float64(3 << 20))}},
+		"disk I/O": {last.Series.DiskRead, []*float64{ptr(float64(2 << 20)), nil, ptr(float64(4 << 20))}},
+		"thermal":  {last.Series.ThermalCPU, []*float64{ptr(50.0), nil, ptr(70.0)}},
+	}
+	for name, check := range wants {
+		if !reflect.DeepEqual(check.got, check.want) {
+			t.Errorf("%s series = %v, want %v", name, values(check.got), values(check.want))
+		}
+	}
+}
+
+func TestWatchStatusPassesEveryCurrentCardThrough(t *testing.T) {
+	stream := `{
+		"memory":{"used":12,"total":16,"used_percent":75,"swap_used":2,"pressure":"normal"},
+		"network":[{"name":"en0","rx_rate_mbs":1,"tx_rate_mbs":0.5}],
+		"batteries":[{"percent":80,"status":"discharging"}],
+		"disks":[{"mount":"/","used":70,"total":100}],
+		"disk_io":{"read_rate":2,"write_rate":3},
+		"thermal":{"cpu_temp":45,"fan_count":0,"system_power":8,"adapter_power":30}
+	}`
+	snapshots, err := watchAll(t, streaming(stream))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := snapshots[0]
+	if got.Memory.UsedPercent == nil || *got.Memory.UsedPercent != 75 || got.Network.Interface == nil || *got.Network.Interface != "en0" ||
+		got.Battery == nil || got.Disk.Free == nil || *got.Disk.Free != 30 || got.DiskIO.WriteBytesPerSecond == nil ||
+		got.Thermal.CPUCelsius == nil || got.Power.SystemWatts == nil {
+		t.Errorf("snapshot did not pass every card through: %+v", got)
+	}
+}
+
 func TestWatchStatusReportsABrokenStream(t *testing.T) {
 	snapshots, err := watchAll(t, streaming(ndjson(ptr(10.0))+`{"cpu":`))
 	if err == nil {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatBytes, formatLoad, formatPercent, formatSpeed } from "./format";
+import { formatBytes, formatBytesParts, formatLoad, formatPercent, formatSpeed, formatSpeedParts } from "./format";
 
 describe("formatBytes", () => {
   it.each([
@@ -36,6 +36,11 @@ describe("formatBytes", () => {
   it.each([null, Number.NaN, Number.POSITIVE_INFINITY, -1])("shows %s as a dash", (bytes) => {
     expect(formatBytes(bytes)).toBe("-");
   });
+
+  it("returns structured parts without reparsing the formatted string", () => {
+    expect(formatBytesParts(12_600_000_000)).toEqual({ value: "12.6", unit: "GB" });
+    expect(formatBytesParts(null)).toEqual({ value: "-" });
+  });
 });
 
 describe("formatSpeed", () => {
@@ -52,6 +57,11 @@ describe("formatSpeed", () => {
 
   it.each([null, Number.NaN, -5])("shows %s as a dash", (bytesPerSecond) => {
     expect(formatSpeed(bytesPerSecond)).toBe("-");
+  });
+
+  it("returns structured parts without reparsing the formatted string", () => {
+    expect(formatSpeedParts(45_300_000)).toEqual({ value: "45.3", unit: "MB/s" });
+    expect(formatSpeedParts(null)).toEqual({ value: "-" });
   });
 });
 

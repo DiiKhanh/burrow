@@ -9,11 +9,16 @@ const threeSignificantDigits = new Intl.NumberFormat("en-US", { maximumSignifica
 const wholeNumber = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
 const twoDecimals = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+export type FormattedMetric = { value: string; unit?: string };
+
 /** "12.6 GB", "860 MB", "999 B"; "-" for a missing or invalid size. */
 export function formatBytes(bytes: number | null): string {
-  if (!isQuantity(bytes)) return strings.unavailable;
-  const { value, unit } = bytesParts(bytes);
-  return `${value} ${unit}`;
+  return joinMetric(formatBytesParts(bytes));
+}
+
+export function formatBytesParts(bytes: number | null): FormattedMetric {
+  if (!isQuantity(bytes)) return { value: strings.unavailable };
+  return bytesParts(bytes);
 }
 
 /** A formatted quantity split for display: "12.6" and "GB". */
@@ -22,12 +27,16 @@ export type SizeParts = { value: string; unit: string };
 /** formatBytes as its number and unit, for a big number with a smaller unit. */
 export function bytesParts(bytes: number): SizeParts {
   if (Math.round(bytes) < STEP) return { value: String(Math.max(0, Math.round(bytes))), unit: BYTE };
-  return scaleParts(bytes / STEP, BYTE_MULTIPLES);
+  return scale(bytes / STEP, BYTE_MULTIPLES);
 }
 
 /** "1.5 KB/s", "45.3 MB/s"; "-" for a missing or invalid speed. */
 export function formatSpeed(bytesPerSecond: number | null): string {
-  if (!isQuantity(bytesPerSecond)) return strings.unavailable;
+  return joinMetric(formatSpeedParts(bytesPerSecond));
+}
+
+export function formatSpeedParts(bytesPerSecond: number | null): FormattedMetric {
+  if (!isQuantity(bytesPerSecond)) return { value: strings.unavailable };
   return scale(bytesPerSecond / STEP, strings.units.speed);
 }
 
@@ -46,12 +55,7 @@ function isQuantity(value: number | null): value is number {
 }
 
 /** Formats value in the first unit, moving up a unit while it rounds to 1000 or more. */
-function scale(value: number, units: readonly string[]): string {
-  const parts = scaleParts(value, units);
-  return `${parts.value} ${parts.unit}`;
-}
-
-function scaleParts(value: number, units: readonly string[]): SizeParts {
+function scale(value: number, units: readonly string[]): SizeParts {
   let unit = 0;
   let scaled = value;
   while (roundToSignificant(scaled) >= STEP && unit < units.length - 1) {
@@ -60,6 +64,10 @@ function scaleParts(value: number, units: readonly string[]): SizeParts {
   }
   // The loop stops at the last unit, so the lookup always hits.
   return { value: threeSignificantDigits.format(scaled), unit: units[unit] ?? "" };
+}
+
+function joinMetric(metric: FormattedMetric): string {
+  return metric.unit === undefined ? metric.value : `${metric.value} ${metric.unit}`;
 }
 
 function roundToSignificant(value: number): number {

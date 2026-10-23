@@ -4,6 +4,27 @@ import { call, event, type Channel } from "mygo-runtime";
 
 // ---- Types ----
 
+/** Battery is nil when the Mac has no battery. */
+export interface Battery {
+  percent: number | null;
+  state: BatteryState | null;
+  timeRemaining: string | null;
+  cycles: number | null;
+  maximumCapacity: number | null;
+}
+
+/** BatteryState is the charging state Mole reports, normalized for the UI. */
+export type BatteryState = "charging" | "charged" | "discharging";
+
+/**
+ * BluetoothDevice is one connected device. BatteryPercent is nil when Mole
+ * could not read that device's battery.
+ */
+export interface BluetoothDevice {
+  name: string;
+  batteryPercent: number | null;
+}
+
 /** CPU is the processor's load. */
 export interface CPU {
   /** Usage is the share of all cores in use, in percent. */
@@ -14,6 +35,21 @@ export interface CPU {
   /** PCores and ECores count the performance and efficiency cores. */
   pCores: number | null;
   eCores: number | null;
+}
+
+/** Disk is the startup disk only. Trash is nil when protected access failed. */
+export interface Disk {
+  free: number | null;
+  used: number | null;
+  total: number | null;
+  purgeable: number | null;
+  trash: number | null;
+}
+
+/** DiskIO is the aggregate disk transfer rate. */
+export interface DiskIO {
+  readBytesPerSecond: number | null;
+  writeBytesPerSecond: number | null;
 }
 
 /** Hardware is how Mole describes the Mac, shown as Mole words it. */
@@ -57,6 +93,31 @@ export interface JunkItem {
   bytes: number;
 }
 
+/** Memory is physical and swap memory usage. */
+export interface Memory {
+  used: number | null;
+  total: number | null;
+  usedPercent: number | null;
+  swapUsed: number | null;
+  pressure: MemoryPressure | null;
+}
+
+/** MemoryPressure is macOS's current memory pressure band. */
+export type MemoryPressure = "normal" | "warn" | "critical";
+
+/** Network is the primary interface's current transfer rate. */
+export interface Network {
+  downloadBytesPerSecond: number | null;
+  uploadBytesPerSecond: number | null;
+  interface: string | null;
+}
+
+/** Power is available on both laptops and desktop Macs. */
+export interface Power {
+  systemWatts: number | null;
+  adapterWatts: number | null;
+}
+
 /** RemovalMethod says how a later Clean removes a group. */
 export type RemovalMethod = "delete" | "move-to-trash";
 
@@ -84,6 +145,10 @@ export interface ScanResult {
 export interface Series {
   /** CPU is the CPU usage in percent. */
   cpu: (number | null)[];
+  memory: (number | null)[];
+  networkDownload: (number | null)[];
+  diskRead: (number | null)[];
+  thermalCPU: (number | null)[];
 }
 
 /**
@@ -95,7 +160,23 @@ export interface Snapshot {
   hardware: Hardware;
   uptimeSeconds: number | null;
   cpu: CPU;
+  memory: Memory;
+  network: Network;
+  battery: Battery | null;
+  power: Power;
+  disk: Disk;
+  diskIO: DiskIO;
+  thermal: Thermal;
+  bluetooth: BluetoothDevice[];
   series: Series;
+}
+
+/** Thermal contains the sensors Burrow can show without root. */
+export interface Thermal {
+  cpuCelsius: number | null;
+  systemWatts: number | null;
+  hasFan: boolean | null;
+  fanRPM: number | null;
 }
 
 // ---- Services ----

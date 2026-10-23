@@ -9,7 +9,7 @@ type Props = {
   /** Top right, e.g. the CPU model. */
   badge?: string;
   /** Bottom line, e.g. load averages. */
-  foot?: string;
+  foot?: ReactNode;
   children: ReactNode;
 };
 
@@ -27,7 +27,7 @@ export function Card({ title, icon, tone, badge, foot, children }: Props) {
         {badge !== undefined && <Chip>{badge}</Chip>}
       </div>
       <div className="flex flex-1 flex-col justify-between gap-2">{children}</div>
-      {foot !== undefined && <p className="tabular truncate text-caption text-ink-faint">{foot}</p>}
+      {foot !== undefined && <div className="tabular min-w-0 text-caption text-ink-faint">{foot}</div>}
     </section>
   );
 }

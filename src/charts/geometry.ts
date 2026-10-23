@@ -9,6 +9,7 @@ export const HEIGHT = 40;
 export const SERIES_SLOTS = 60;
 
 export type Series = readonly (number | null)[];
+export type Point = { x: number; y: number };
 
 /** The scale's top: the given maximum, else the largest sample (at least 1). */
 export function scaleMax(data: Series, max: number | undefined): number {
@@ -24,4 +25,32 @@ export function slotOf(i: number, data: Series, slots: number): number {
 /** Rounds a coordinate to keep the markup short. */
 export function coordinate(value: number): number {
   return Number(value.toFixed(1));
+}
+
+/** Continuous point runs, split wherever the collector missed a sample. */
+export function pointRuns(data: Series, max: number | undefined, slots: number): Point[][] {
+  const top = scaleMax(data, max);
+  const step = WIDTH / Math.max(1, slots - 1);
+  const runs: Point[][] = [];
+  let current: Point[] | undefined;
+
+  data.forEach((value, i) => {
+    if (value === null) {
+      current = undefined;
+      return;
+    }
+    if (current === undefined) {
+      current = [];
+      runs.push(current);
+    }
+    current.push({
+      x: coordinate(slotOf(i, data, slots) * step),
+      y: coordinate(HEIGHT - (Math.min(value, top) / top) * (HEIGHT - 2) - 1),
+    });
+  });
+  return runs;
+}
+
+export function lineThrough(points: readonly Point[]): string {
+  return points.map(({ x, y }, i) => `${i === 0 ? "M" : "L"}${x},${y}`).join("");
 }

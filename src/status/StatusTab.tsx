@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { events, type Snapshot } from "../mygo";
-import { EmptyCard } from "./Card";
+import { BatteryOrPowerCard } from "./BatteryCard";
 import { CpuCard } from "./CpuCard";
+import { DiskCard } from "./DiskCard";
+import { DiskIOCard } from "./DiskIOCard";
 import { HealthCard } from "./HealthCard";
-
-/** Cards still to land in the bento (Memory, Network, Battery, Disk, Disk I/O, Thermal). */
-const PENDING_CARDS = ["memory", "network", "battery", "disk", "disk-io", "thermal"] as const;
+import { MemoryCard } from "./MemoryCard";
+import { NetworkCard } from "./NetworkCard";
+import { ThermalCard } from "./ThermalCard";
 
 /**
  * The Status tab: live system health in a 4x2 bento. Go sends a whole
@@ -18,9 +20,12 @@ export function StatusTab() {
       <div className="grid-bento grid shrink-0 gap-3">
         <HealthCard snapshot={snapshot} />
         <CpuCard snapshot={snapshot} />
-        {PENDING_CARDS.map((card) => (
-          <EmptyCard key={card} />
-        ))}
+        <MemoryCard snapshot={snapshot} />
+        <NetworkCard snapshot={snapshot} />
+        <BatteryOrPowerCard snapshot={snapshot} />
+        <DiskCard snapshot={snapshot} />
+        <DiskIOCard snapshot={snapshot} />
+        <ThermalCard snapshot={snapshot} />
       </div>
     </main>
   );

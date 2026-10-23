@@ -117,6 +117,34 @@
   animation: scan-indeterminate 1.4s ease-in-out infinite;
 }
 
+.meter-progress {
+  appearance: none;
+  border: 0;
+  border-radius: var(--radius-card);
+  background: var(--color-surface-sunken);
+}
+
+.meter-progress::-webkit-progress-bar {
+  border-radius: inherit;
+  background: var(--color-surface-sunken);
+}
+
+.meter-progress::-webkit-progress-value {
+  border-radius: inherit;
+  background: currentColor;
+  transition: width 700ms ease;
+}
+
+.meter-progress::-moz-progress-bar {
+  border-radius: inherit;
+  background: currentColor;
+  transition: width 700ms ease;
+}
+
+.tab-panel[data-state="inactive"] {
+  display: none;
+}
+
 @keyframes scan-indeterminate {
   from {
     background-position-x: -80%;
