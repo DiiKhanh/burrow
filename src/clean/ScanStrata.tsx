@@ -2,22 +2,12 @@ import { formatBytes } from "../format";
 import type { JunkGroupID, ScanProgress } from "../mygo";
 import { strings } from "../strings";
 import { JUNK_GROUP_ORDER, junkGroupCatalog } from "./catalog";
+import { pendingOpacity, STRATA_LAYER } from "./strata";
 
 type Props = {
   progress: ScanProgress | null;
   groupBytes: Partial<Record<JunkGroupID, number>>;
 };
-
-const PENDING_OPACITY = [
-  "opacity-95",
-  "opacity-90",
-  "opacity-85",
-  "opacity-80",
-  "opacity-75",
-  "opacity-70",
-  "opacity-65",
-  "opacity-60",
-] as const;
 
 export function ScanStrata({ progress, groupBytes }: Props) {
   return (
@@ -42,11 +32,7 @@ function StrataLayer({
 }) {
   const active = progress?.groupId === id;
   return (
-    <div
-      className={`relative flex h-9 items-center gap-3 border-line px-4 text-body not-last:border-b motion-safe:transition-colors ${
-        active ? "bg-surface-raised" : `bg-surface-sunken ${PENDING_OPACITY[index]}`
-      }`}
-    >
+    <div className={`${STRATA_LAYER} ${active ? "bg-surface-raised" : `bg-surface-sunken ${pendingOpacity(index)}`}`}>
       {active && (
         <progress
           aria-label={strings.clean.groupProgress(junkGroupCatalog[id].name)}

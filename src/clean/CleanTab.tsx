@@ -1,9 +1,18 @@
 import { Channel } from "mygo-runtime";
 import { useRef, useState } from "react";
 import { formatBytes } from "../format";
-import { Clean, type JunkGroupID, type ScanProgress, type ScanResult } from "../mygo";
+import {
+  Clean,
+  type CleanProgress,
+  type CleanReport,
+  type JunkGroupID,
+  type ScanProgress,
+  type ScanResult,
+} from "../mygo";
 import { PillButton } from "../shell/PillButton";
 import { strings } from "../strings";
+import { CleaningView, DoneView } from "./CleanRun";
+import type { CleanLayer } from "./CleanStrata";
 import { Review } from "./Review";
 import { ScanStrata } from "./ScanStrata";
 
@@ -15,17 +24,25 @@ const startRealScan: StartScan = (onProgress) => {
   return { result: Clean.scan(updates), cancel: () => updates.close() };
 };
 
-type Phase = "idle" | "scanning" | "review";
+export type StartClean = (
+  ids: readonly string[],
+  onProgress: (progress: CleanProgress) => void,
+) => Promise<CleanReport>;
 
-type Props = { startScan?: StartScan };
+const startRealClean: StartClean = (ids, onProgress) => Clean.clean([...ids], new Channel<CleanProgress>(onProgress));
+
+type Phase = "idle" | "scanning" | "review" | "cleaning" | "done";
+
+type Props = { startScan?: StartScan; startClean?: StartClean };
 
 /** The Clean tab: Scan, Review, Clean and Done. */
-export function CleanTab({ startScan = startRealScan }: Props) {
+export function CleanTab({ startScan = startRealScan, startClean = startRealClean }: Props) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [progress, setProgress] = useState<ScanProgress | null>(null);
   const [groupBytes, setGroupBytes] = useState<Partial<Record<JunkGroupID, number>>>({});
   const [result, setResult] = useState<ScanResult | null>(null);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const cleaning = useCleaning(startClean);
   const sessionRef = useRef<ScanSession | null>(null);
   const runRef = useRef(0);
 
@@ -35,7 +52,7 @@ export function CleanTab({ startScan = startRealScan }: Props) {
     setProgress(null);
     setGroupBytes({});
     setResult(null);
-    setError(false);
+    setError(null);
     const session = startScan((next) => {
       if (runRef.current !== run) return;
       setProgress(next);
@@ -53,7 +70,7 @@ export function CleanTab({ startScan = startRealScan }: Props) {
       },
       () => {
         if (runRef.current !== run) return;
-        setError(true);
+        setError(strings.clean.scanError);
         setPhase("idle");
         sessionRef.current = null;
       },
@@ -69,6 +86,23 @@ export function CleanTab({ startScan = startRealScan }: Props) {
     setGroupBytes({});
   };
 
+  const clean = (ids: string[]) => {
+    if (!result) return;
+    setPhase("cleaning");
+    cleaning.start(result, ids).then(
+      () => setPhase("done"),
+      () => {
+        setError(strings.clean.cleanError);
+        setPhase("idle");
+      },
+    );
+  };
+
+  const finish = () => {
+    setResult(null);
+    setPhase("idle");
+  };
+
   return (
     <main className="mx-auto flex min-h-0 w-full max-w-clean flex-1 flex-col items-center gap-6 px-6 pt-8 pb-16">
       <Stepper phase={phase} />
@@ -76,7 +110,7 @@ export function CleanTab({ startScan = startRealScan }: Props) {
         <section className="flex flex-1 flex-col items-center justify-center gap-5 text-center">
           <h1 className="font-bold text-title">{strings.clean.idle.title}</h1>
           <p className="text-ink-muted text-note">{strings.clean.idle.description}</p>
-          {error && <p className="text-body text-danger">{strings.clean.scanError}</p>}
+          {error && <p className="text-body text-danger">{error}</p>}
           <PillButton onClick={begin}>{strings.clean.idle.action}</PillButton>
         </section>
       )}
@@ -98,13 +132,49 @@ export function CleanTab({ startScan = startRealScan }: Props) {
           </button>
         </section>
       )}
-      {phase === "review" && result && <Review result={result} onScanAgain={begin} />}
+      {phase === "review" && result && <Review result={result} onScanAgain={begin} onClean={clean} />}
+      {phase === "cleaning" && <CleaningView {...cleaning} />}
+      {phase === "done" && cleaning.report && <DoneView {...cleaning} report={cleaning.report} onFinish={finish} />}
     </main>
   );
 }
 
+/** A running or finished Clean: its Strata layers, live progress, and report. */
+function useCleaning(startClean: StartClean) {
+  const [layers, setLayers] = useState<CleanLayer[]>([]);
+  const [progress, setProgress] = useState<Partial<Record<JunkGroupID, CleanProgress>>>({});
+  const [active, setActive] = useState<JunkGroupID | null>(null);
+  const [freedBytes, setFreedBytes] = useState(0);
+  const [report, setReport] = useState<CleanReport | null>(null);
+
+  const start = async (result: ScanResult, ids: readonly string[]) => {
+    setLayers(cleanLayers(result, ids));
+    setProgress({});
+    setActive(null);
+    setFreedBytes(0);
+    setReport(null);
+    const next = await startClean(ids, (update) => {
+      setProgress((current) => ({ ...current, [update.groupId]: update }));
+      setActive(update.groupId);
+      setFreedBytes(update.freedBytes);
+    });
+    setActive(null);
+    setReport(next);
+  };
+
+  return { layers, progress, active, freedBytes, report, start };
+}
+
+/** The junk groups with selected items, in ScanResult order. */
+function cleanLayers(result: ScanResult, ids: readonly string[]): CleanLayer[] {
+  const selected = new Set(ids);
+  return result.groups
+    .map((group) => ({ id: group.id, selected: group.items.filter((item) => selected.has(item.id)).length }))
+    .filter((layer) => layer.selected > 0);
+}
+
 /** The step each phase belongs to: Scan, Review, Clean, Done. */
-const STEP: Record<Phase, number> = { idle: 0, scanning: 0, review: 1 };
+const STEP: Record<Phase, number> = { idle: 0, scanning: 0, review: 1, cleaning: 2, done: 3 };
 
 type StepState = "done" | "current" | "ahead";
 

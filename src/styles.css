@@ -94,16 +94,22 @@
   --shadow-pill: 0 8px 30px rgb(0 0 0 / 0.35);
 }
 
-.scan-layer-progress {
+/* A Strata layer's progress bar, filling the layer behind its text. */
+.scan-layer-progress,
+.clean-layer-progress {
   appearance: none;
   border: 0;
   background: var(--color-transparent);
-  color: var(--color-size);
-  opacity: 0.22;
 }
 
-.scan-layer-progress::-webkit-progress-bar {
+.scan-layer-progress::-webkit-progress-bar,
+.clean-layer-progress::-webkit-progress-bar {
   background: var(--color-transparent);
+}
+
+.scan-layer-progress {
+  color: var(--color-size);
+  opacity: 0.22;
 }
 
 .scan-layer-progress::-webkit-progress-value {
@@ -151,6 +157,22 @@
   }
   to {
     background-position-x: 180%;
+  }
+}
+
+/* The Strata layer being cleaned: its bar fills as its items are removed. */
+.clean-layer-progress {
+  opacity: 0.2;
+}
+
+.clean-layer-progress::-webkit-progress-value {
+  background: var(--color-ok);
+  transition: width 300ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .clean-layer-progress::-webkit-progress-value {
+    transition: none;
   }
 }
 

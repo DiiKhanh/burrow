@@ -20,7 +20,7 @@ func TestEngineReleasesTheScanSlotAfterCancellation(t *testing.T) {
 		}
 		return clean.ScanResult{Groups: []clean.JunkGroup{{ID: clean.Trash}}}, nil
 	})
-	engine := clean.NewEngine(adapter)
+	engine := clean.NewEngine(clean.Options{Scanner: adapter})
 	ctx, cancel := context.WithCancel(context.Background())
 	firstDone := make(chan error, 1)
 	go func() {
@@ -50,7 +50,7 @@ func TestEngineRejectsASecondScanWhileOneIsRunning(t *testing.T) {
 		<-release
 		return clean.ScanResult{}, nil
 	})
-	engine := clean.NewEngine(adapter)
+	engine := clean.NewEngine(clean.Options{Scanner: adapter})
 	firstDone := make(chan error, 1)
 	go func() {
 		_, err := engine.Scan(context.Background(), nil)
@@ -59,8 +59,8 @@ func TestEngineRejectsASecondScanWhileOneIsRunning(t *testing.T) {
 	<-started
 
 	_, err := engine.Scan(context.Background(), nil)
-	if !errors.Is(err, clean.ErrScanInProgress) {
-		t.Fatalf("second Scan error = %v, want ErrScanInProgress", err)
+	if !errors.Is(err, clean.ErrBusy) {
+		t.Fatalf("second Scan error = %v, want ErrBusy", err)
 	}
 	close(release)
 	if err := <-firstDone; err != nil {
@@ -86,7 +86,7 @@ func TestEngineScanForwardsProgressAndResult(t *testing.T) {
 		}
 		return wantResult, nil
 	})
-	engine := clean.NewEngine(adapter)
+	engine := clean.NewEngine(clean.Options{Scanner: adapter})
 	var gotProgress []clean.ScanProgress
 
 	gotResult, err := engine.Scan(context.Background(), func(progress clean.ScanProgress) error {

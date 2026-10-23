@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -56,7 +57,7 @@ wait "$child"
 		cleanupErr := <-done
 		t.Fatalf("Scan stayed alive after a progress error because a Mole child survived; cleanup returned %v", cleanupErr)
 	}
-	if err := syscall.Kill(childPID, 0); !errors.Is(err, syscall.ESRCH) {
+	if err := waitForExit(childPID); err != nil {
 		_ = syscall.Kill(childPID, syscall.SIGKILL)
 		t.Fatalf("Mole child %d still exists after progress error: %v", childPID, err)
 	}
@@ -98,7 +99,7 @@ wait "$child"
 		cleanupErr := <-done
 		t.Fatalf("Scan stayed alive after cancellation because a Mole child survived; cleanup returned %v", cleanupErr)
 	}
-	if err := syscall.Kill(childPID, 0); !errors.Is(err, syscall.ESRCH) {
+	if err := waitForExit(childPID); err != nil {
 		_ = syscall.Kill(childPID, syscall.SIGKILL)
 		t.Fatalf("Mole child %d still exists after cancellation: %v", childPID, err)
 	}
@@ -328,6 +329,22 @@ func TestParseCleanListMapsSafeJunkAndMeasuresTheFilesystem(t *testing.T) {
 	}
 	if strings.Join(firstIDs, "|") != strings.Join(secondIDs, "|") {
 		t.Fatalf("ids changed between equal scans: %q != %q", firstIDs, secondIDs)
+	}
+}
+
+// waitForExit waits until pid no longer exists. A killed orphan lingers as a
+// zombie until launchd reaps it, so it can outlive Scan by a moment.
+func waitForExit(pid int) error {
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		err := syscall.Kill(pid, 0)
+		if errors.Is(err, syscall.ESRCH) {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("still running at the deadline (kill 0: %w)", err)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 

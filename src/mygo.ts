@@ -37,6 +37,38 @@ export interface CPU {
   eCores: number | null;
 }
 
+/**
+ * CleanProgress is an observable point in a running Clean: how far the
+ * active junk group got, and the bytes freed by the whole run so far.
+ */
+export interface CleanProgress {
+  groupId: JunkGroupID;
+  selected: number;
+  cleaned: number;
+  skipped: number;
+  freedBytes: number;
+}
+
+/** CleanReport is the outcome of one Clean, item by item. */
+export interface CleanReport {
+  items: CleanedItem[];
+  /** FreedBytes counts the Scan sizes of the deleted items. */
+  freedBytes: number;
+}
+
+/**
+ * CleanedItem is what Clean did with one selected junk item: removed with
+ * Method, or skipped with SkipReason. Path and Method are empty only for an
+ * id the current ScanResult does not hold.
+ */
+export interface CleanedItem {
+  id: string;
+  path: string;
+  bytes: number;
+  method: RemovalMethod | null;
+  skipReason: SkipReason | null;
+}
+
 /** Disk is the startup disk only. Trash is nil when protected access failed. */
 export interface Disk {
   free: number | null;
@@ -151,6 +183,9 @@ export interface Series {
   thermalCPU: (number | null)[];
 }
 
+/** SkipReason is why Clean left a selected junk item in place. */
+export type SkipReason = "in_use" | "permission_denied" | "protected" | "already_gone";
+
 /**
  * Snapshot is what the Status tab shows: the latest sample with the recent
  * history of each sparkline. A nil field could not be read.
@@ -183,6 +218,13 @@ export interface Thermal {
 
 /** Clean is the bound service behind the Clean tab: Scan and Clean. */
 export const Clean = {
+  /**
+   * Clean removes the selected junk items of the latest Scan, by id, streaming
+   * progress through updates. MyGo cancels ctx when the page closes updates.
+   */
+  clean(ids: string[], updates: Channel<CleanProgress>): Promise<CleanReport> {
+    return call("Clean.Clean", ids, updates);
+  },
   /**
    * Scan streams progress through updates and returns the complete preview.
    * MyGo cancels ctx when the page closes updates.
