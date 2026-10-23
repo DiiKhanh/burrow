@@ -14,7 +14,7 @@ func TestIntegrationBundledStatusStreamsSamples(t *testing.T) {
 	defer cancel()
 
 	var samples []StatusSample
-	err := bundled(t).WatchStatus(ctx, func(s StatusSample) {
+	err := bundled(t).WatchStatus(ctx, t.TempDir(), func(s StatusSample) {
 		samples = append(samples, s)
 		if len(samples) == 3 {
 			cancel()

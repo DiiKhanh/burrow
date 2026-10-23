@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"log/slog"
@@ -48,7 +49,10 @@ func main() {
 			StateKey:             "main",
 			URL:                  "/",
 		})
-		watchStatusWhileShown(win, engine.NewStatusWatcher(bundle.WatchStatus, service.BroadcastStatus))
+		statusSource := func(ctx context.Context, yield func(mole.StatusSample)) error {
+			return bundle.WatchStatus(ctx, home, yield)
+		}
+		watchStatusWhileShown(win, engine.NewStatusWatcher(statusSource, service.BroadcastStatus))
 	})
 	if err := mygo.App.Run(); err != nil {
 		log.Fatalf("running Burrow: %v", err)

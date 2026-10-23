@@ -1,6 +1,6 @@
 // Every string the user sees. Components never hardcode text: they read it
 // here, and strings with numbers or plurals are functions.
-import type { HealthLevel, HealthReason } from "./mygo";
+import type { BatteryState, HealthLevel, HealthReason, MemoryPressure } from "./mygo";
 
 const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
 
@@ -98,6 +98,67 @@ export const strings = {
       load: (load1: string, load5: string, load15: string) => `Load ${[load1, load5, load15].join(SEPARATOR)}`,
       /** "4P + 4E cores": performance and efficiency cores. */
       cores: (performance: number, efficiency: number) => `${performance}P + ${efficiency}E cores`,
+    },
+    memory: {
+      title: "Memory",
+      icon: "▤",
+      pressure: "Pressure",
+      pressures: {
+        normal: "Normal",
+        warn: "Warn",
+        critical: "Critical",
+      } satisfies Record<MemoryPressure, string>,
+      usage: (used: string, total: string) => `${used} / ${total}`,
+      swap: (size: string) => `${size} swap`,
+    },
+    network: {
+      title: "Network",
+      icon: "⇣",
+      upload: (speed: string) => `Upload ${speed}`,
+    },
+    battery: {
+      title: "Battery",
+      icon: "⚡",
+      states: {
+        charging: "Charging",
+        charged: "Charged",
+        discharging: "Discharging",
+      } satisfies Record<BatteryState, string>,
+      capacity: (percent: string) => `${percent}% capacity`,
+      details: (time: string, cycles: string) => `${time} remaining${SEPARATOR}${cycles} cycles`,
+      device: (name: string, percent: number) => `${name} ${percent}%`,
+    },
+    power: {
+      title: "Power",
+      icon: "⚡",
+      systemUnit: "W system",
+      adapter: (watts: string) => `${watts} W adapter`,
+      noBattery: "No battery",
+    },
+    disk: {
+      title: "Disk",
+      icon: "◐",
+      root: "/",
+      freeUnit: (unit: string) => `${unit} free`,
+      meter: "Startup disk used",
+      used: (size: string) => `Used ${size}`,
+      purgeable: (size: string) => `Purgeable ${size}`,
+      trash: (size: string) => `Trash ${size}`,
+      trashUnavailable: "Trash Unavailable",
+    },
+    diskIO: {
+      title: "Disk I/O",
+      icon: "↕",
+      readUnit: (unit: string) => `${unit} read`,
+      write: (speed: string) => `Write ${speed}`,
+    },
+    thermal: {
+      title: "Thermal",
+      icon: "♨",
+      temperatureUnit: "°C",
+      power: (watts: string) => `Power ${watts} W`,
+      fan: (rpm: string) => `${rpm} RPM`,
+      fanUnavailable: "Fan -",
     },
   },
   /** Shown in place of a value that could not be read. */

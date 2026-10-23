@@ -46,7 +46,7 @@ export function Window({ panels }: Props) {
           value={value}
           forceMount
           hidden={value !== tab}
-          className="flex min-h-0 flex-1 flex-col focus:outline-none"
+          className="tab-panel flex min-h-0 flex-1 flex-col focus:outline-none"
         >
           {panels[value]}
         </Tabs.Content>

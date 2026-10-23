@@ -8,7 +8,7 @@ async function sendStatus(page: Page, s: Snapshot) {
 }
 
 function card(page: Page, name: string) {
-  return page.getByRole("region", { name });
+  return page.getByRole("region", { name, exact: true });
 }
 
 test.beforeEach(async ({ page }) => {
@@ -58,6 +58,75 @@ test("shows a dash for each field Go could not read", async ({ page }) => {
   await expect(card(page, "Health")).toContainText("- · -");
   await expect(card(page, "CPU")).toContainText("Load - · - · -");
   await expect(card(page, "CPU").locator("rect")).toHaveCount(0);
+});
+
+test("shows all remaining Status cards from Go's snapshot", async ({ page }) => {
+  await page.keyboard.press("Meta+2");
+  await sendStatus(page, snapshot());
+
+  await expect(card(page, "Memory")).toContainText("83%");
+  await expect(card(page, "Memory")).toContainText("Normal");
+  await expect(card(page, "Memory")).toContainText("14.2 GB / 17.2 GB");
+  await expect(card(page, "Network")).toContainText("450KB/s");
+  await expect(card(page, "Network")).toContainText("Upload 57 KB/s");
+  await expect(card(page, "Battery")).toContainText("100% Charged");
+  await expect(card(page, "Battery")).toContainText("Magic Mouse 64%");
+  await expect(card(page, "Disk")).toContainText("14GB free");
+  await expect(card(page, "Disk")).toContainText("Trash 42 MB");
+  await expect(card(page, "Disk I/O")).toContainText("2.5MB/s read");
+  await expect(card(page, "Thermal")).toContainText("53°C");
+  await expect(card(page, "Thermal")).not.toContainText("RPM");
+});
+
+test("uses Power on a desktop Mac and only shows RPM when a fan exists", async ({ page }) => {
+  await page.keyboard.press("Meta+2");
+  await sendStatus(page, snapshot({ battery: null, power: { systemWatts: 9.5, adapterWatts: 30 }, bluetooth: [] }));
+
+  await expect(card(page, "Power")).toContainText("9.5W system");
+  await expect(card(page, "Power")).toContainText("30 W adapter");
+  await expect(card(page, "Battery")).toHaveCount(0);
+  await expect(card(page, "Thermal")).not.toContainText("RPM");
+
+  await sendStatus(page, snapshot({ battery: null, thermal: { hasFan: true, fanRPM: 1_800 } }));
+  await expect(card(page, "Thermal")).toContainText("1,800 RPM");
+});
+
+test("keeps every Status card usable when collectors omit fields", async ({ page }) => {
+  await page.keyboard.press("Meta+2");
+  await sendStatus(
+    page,
+    snapshot({
+      memory: { used: null, total: null, usedPercent: null, swapUsed: null, pressure: null },
+      network: { downloadBytesPerSecond: null, uploadBytesPerSecond: null, interface: null },
+      battery: { percent: null, state: null, timeRemaining: null, cycles: null, maximumCapacity: null },
+      disk: { free: null, used: null, total: null, purgeable: null, trash: null },
+      diskIO: { readBytesPerSecond: null, writeBytesPerSecond: null },
+      thermal: { cpuCelsius: null, systemWatts: null, hasFan: null, fanRPM: null },
+      bluetooth: [],
+      series: { memory: [], networkDownload: [], diskRead: [], thermalCPU: [] },
+    }),
+  );
+
+  for (const name of ["Memory", "Network", "Battery", "Disk", "Disk I/O", "Thermal"]) {
+    await expect(card(page, name)).toContainText("-");
+  }
+  await expect(card(page, "Disk")).toContainText("Trash Unavailable");
+  await expect(card(page, "Thermal")).toContainText("Fan -");
+});
+
+test("scrolls vertically without horizontal overflow in a short window", async ({ page }) => {
+  await page.setViewportSize({ width: 760, height: 420 });
+  await page.keyboard.press("Meta+2");
+  await sendStatus(page, snapshot());
+
+  const status = page.getByRole("tabpanel", { name: "Status" }).locator("main");
+  await expect.poll(() => status.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
+  expect(
+    await page.evaluate(() => ({
+      page: document.documentElement.scrollWidth <= window.innerWidth,
+      status: [...document.querySelectorAll("main")].every((element) => element.scrollWidth <= element.clientWidth),
+    })),
+  ).toEqual({ page: true, status: true });
 });
 
 test("colors the Health level by how serious it is", async ({ page }) => {
