@@ -181,9 +181,14 @@ export interface ScanProgress {
   fraction: number | null;
 }
 
-/** ScanResult is the complete preview returned by Scan. */
+/**
+ * ScanResult is the complete preview returned by Scan. Unreadable lists, in
+ * group order, the junk groups macOS privacy protection kept the Scan from
+ * reading in full: their items may be missing, or the group missing entirely.
+ */
 export interface ScanResult {
   groups: JunkGroup[];
+  unreadable: JunkGroupID[];
 }
 
 /**
@@ -198,6 +203,9 @@ export interface Series {
   diskRead: (number | null)[];
   thermalCPU: (number | null)[];
 }
+
+/** SettingsPane is the System Settings pane Burrow managed to open. */
+export type SettingsPane = "full-disk-access" | "privacy-security";
 
 /** SkipReason is why Clean left a selected junk item in place. */
 export type SkipReason = "in_use" | "permission_denied" | "protected" | "already_gone";
@@ -250,6 +258,17 @@ export const Clean = {
    */
   scan(updates: Channel<ScanProgress>): Promise<ScanResult> {
     return call("Clean.Scan", updates);
+  },
+} as const;
+
+/** Privacy is the bound service that sends the user to grant Full Disk Access. */
+export const Privacy = {
+  /**
+   * OpenFullDiskAccess opens Full Disk Access in System Settings, or Privacy &
+   * Security when the direct link does not open, and says which one opened.
+   */
+  openFullDiskAccess(): Promise<SettingsPane> {
+    return call("Privacy.OpenFullDiskAccess");
   },
 } as const;
 

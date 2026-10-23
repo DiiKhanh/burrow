@@ -6,9 +6,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"log/slog"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -152,5 +154,27 @@ func TestIntegrationBundledStatusPrintsMetrics(t *testing.T) {
 	}
 	if len(metrics) == 0 {
 		t.Error("status --json printed an empty object")
+	}
+}
+
+// A Trash Mole cannot list stands in for one macOS hides without Full Disk
+// Access: the bundled Mole says so in the words the adapter reads.
+func TestIntegrationBundledMoReportsAnUnlistableTrash(t *testing.T) {
+	home := t.TempDir()
+	trash := filepath.Join(home, ".Trash")
+	if err := os.Mkdir(trash, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(trash, 0o755) })
+	adapter := NewScanner(bundled(t), home, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+
+	result, err := adapter.Scan(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(result.Unreadable, []clean.JunkGroupID{clean.Trash}) {
+		t.Fatalf("unreadable = %v, want [trash]", result.Unreadable)
 	}
 }

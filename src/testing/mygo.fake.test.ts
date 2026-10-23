@@ -9,6 +9,6 @@ describe("the MyGo client under test", () => {
   });
 
   it("exposes the Scan result contract", async () => {
-    await expect(Clean.scan({} as never)).resolves.toEqual({ groups: [] });
+    await expect(Clean.scan({} as never)).resolves.toEqual({ groups: [], unreadable: [] });
   });
 });

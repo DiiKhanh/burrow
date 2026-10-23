@@ -36,6 +36,10 @@ _Avoid_: Device Backups & Firmware
 A junk group that cannot be selected right now because the app that owns it is running.
 _Avoid_: Disabled group, blocked group
 
+**Unreadable junk group**:
+A junk group that macOS privacy protection kept the Scan from reading in full during that Scan, shown in Review as "Protected access unavailable". It says nothing about whether Full Disk Access is on: Burrow cannot check that.
+_Avoid_: Blocked group, missing FDA
+
 **Delete**:
 Removing a junk item for good, freeing its space immediately.
 _Avoid_: Purge, wipe, erase

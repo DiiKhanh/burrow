@@ -95,3 +95,46 @@ test("scans again from the footer", async ({ page }) => {
   await expect(page.getByRole("list", { name: "Junk groups" })).toBeVisible();
   await expect(page.getByRole("checkbox", { name: "Developer Tools", exact: true })).not.toBeChecked();
 });
+
+test("shows protected access unavailable and opens Full Disk Access", async ({ page }) => {
+  await review(page, "unreadable");
+  const groups = page.getByRole("list", { name: "Junk groups" });
+
+  const trash = groups.getByRole("listitem").filter({ hasText: "Protected access unavailable" });
+  await expect(trash).toHaveCount(1);
+  await expect(trash).toContainText("Items already placed in Trash.");
+  await expect(trash.getByRole("checkbox")).toHaveCount(0);
+  await expect(page.getByRole("checkbox", { name: "App Caches", exact: true })).toBeChecked();
+
+  await page.getByRole("button", { name: "Open System Settings" }).click();
+  await expect(page.getByText("Turn on Burrow in Full Disk Access, then scan again.")).toBeVisible();
+});
+
+test("walks the user to Full Disk Access when only Privacy & Security opens", async ({ page }) => {
+  await page.goto("/?scan=unreadable&settings=fallback");
+  await page.getByRole("button", { name: "Start scan" }).click();
+
+  await page.getByRole("button", { name: "Open System Settings" }).click();
+  await expect(
+    page.getByText("In Privacy & Security, scroll to Full Disk Access, turn on Burrow, then scan again."),
+  ).toBeVisible();
+});
+
+test("gives the manual path when System Settings does not open", async ({ page }) => {
+  await page.goto("/?scan=unreadable&settings=refused");
+  await page.getByRole("button", { name: "Start scan" }).click();
+
+  await page.getByRole("button", { name: "Open System Settings" }).click();
+  await expect(
+    page.getByText(
+      "System Settings did not open. Open it from the Apple menu, go to Privacy & Security › Full Disk Access, and turn on Burrow.",
+    ),
+  ).toBeVisible();
+});
+
+test("says nothing about Full Disk Access when the Scan read everything", async ({ page }) => {
+  await review(page);
+
+  await expect(page.getByText("Protected access unavailable")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Open System Settings" })).toHaveCount(0);
+});

@@ -85,6 +85,16 @@ export const strings = {
       chevron: "›",
       scanAgain: "← Scan again",
       clean: (count: number) => `Clean ${plural(count, "item", "items")} →`,
+      unreadable: "Protected access unavailable",
+    },
+    fullDiskAccess: {
+      label: "Full Disk Access",
+      explanation: "macOS kept Burrow out of some places. Grant Full Disk Access to include them.",
+      action: "Open System Settings",
+      opened: "Turn on Burrow in Full Disk Access, then scan again.",
+      fallback: "In Privacy & Security, scroll to Full Disk Access, turn on Burrow, then scan again.",
+      failed:
+        "System Settings did not open. Open it from the Apple menu, go to Privacy & Security › Full Disk Access, and turn on Burrow.",
     },
     groups: {
       appCaches: { name: "App Caches", description: "Temporary files apps rebuild on next launch." },

@@ -51,9 +51,12 @@ type JunkGroup struct {
 	Items           []JunkItem    `json:"items"`
 }
 
-// ScanResult is the complete preview returned by Scan.
+// ScanResult is the complete preview returned by Scan. Unreadable lists, in
+// group order, the junk groups macOS privacy protection kept the Scan from
+// reading in full: their items may be missing, or the group missing entirely.
 type ScanResult struct {
-	Groups []JunkGroup `json:"groups"`
+	Groups     []JunkGroup   `json:"groups"`
+	Unreadable []JunkGroupID `json:"unreadable"`
 }
 
 // ScanProgress is an observable point in a running Scan. Fraction is nil

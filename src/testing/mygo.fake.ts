@@ -3,10 +3,10 @@
 // shape in step with the Go services.
 import type { GoEvent } from "mygo-runtime";
 import type * as Real from "../mygo";
-import { fullScan, longScan } from "./scans";
+import { fullScan, longScan, unreadableScan } from "./scans";
 
 /** Scan results by the page's `?scan=` scenario; any other value gets fullScan. */
-const SCANS: Record<string, Real.ScanResult> = { long: longScan };
+const SCANS: Record<string, Real.ScanResult> = { long: longScan, unreadable: unreadableScan };
 
 /** The page's `?<name>=` scenario. */
 function scenario(name: string): string | null {
@@ -64,7 +64,7 @@ export const Clean = {
     return report;
   },
   scan: async (updates: Parameters<typeof Real.Clean.scan>[0]): Promise<Real.ScanResult> => {
-    if (!("close" in updates)) return { groups: [] };
+    if (!("close" in updates)) return { groups: [], unreadable: [] };
     const scanScenario = scenario("scan");
     return new Promise((resolve, reject) => {
       const timers: ReturnType<typeof setTimeout>[] = [];
@@ -115,6 +115,18 @@ export const Clean = {
     });
   },
 } as const satisfies typeof Real.Clean;
+
+/**
+ * Which System Settings pane opens, by the page's `?settings=` scenario:
+ * `fallback` opens only Privacy & Security, `refused` opens nothing.
+ */
+export const Privacy = {
+  openFullDiskAccess: async (): Promise<Real.SettingsPane> => {
+    const settings = scenario("settings");
+    if (settings === "refused") throw new Error("System Settings did not open");
+    return settings === "fallback" ? "privacy-security" : "full-disk-access";
+  },
+} as const satisfies typeof Real.Privacy;
 
 export const Status = {
   ping: async () => {},
