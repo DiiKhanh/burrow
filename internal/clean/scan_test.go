@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/DiiKhanh/burrow/internal/clean"
+	"github.com/DiiKhanh/burrow/internal/clean/cleantest"
 )
 
 func TestEngineReleasesTheScanSlotAfterCancellation(t *testing.T) {
@@ -20,7 +21,7 @@ func TestEngineReleasesTheScanSlotAfterCancellation(t *testing.T) {
 		}
 		return clean.ScanResult{Groups: []clean.JunkGroup{{ID: clean.Trash}}}, nil
 	})
-	engine := clean.NewEngine(clean.Options{Scanner: adapter})
+	engine := clean.NewEngine(clean.Options{Scanner: adapter, Processes: cleantest.NewFakeProcesses()})
 	ctx, cancel := context.WithCancel(context.Background())
 	firstDone := make(chan error, 1)
 	go func() {
@@ -50,7 +51,7 @@ func TestEngineRejectsASecondScanWhileOneIsRunning(t *testing.T) {
 		<-release
 		return clean.ScanResult{}, nil
 	})
-	engine := clean.NewEngine(clean.Options{Scanner: adapter})
+	engine := clean.NewEngine(clean.Options{Scanner: adapter, Processes: cleantest.NewFakeProcesses()})
 	firstDone := make(chan error, 1)
 	go func() {
 		_, err := engine.Scan(context.Background(), nil)
@@ -86,7 +87,7 @@ func TestEngineScanForwardsProgressAndResult(t *testing.T) {
 		}
 		return wantResult, nil
 	})
-	engine := clean.NewEngine(clean.Options{Scanner: adapter})
+	engine := clean.NewEngine(clean.Options{Scanner: adapter, Processes: cleantest.NewFakeProcesses()})
 	var gotProgress []clean.ScanProgress
 
 	gotResult, err := engine.Scan(context.Background(), func(progress clean.ScanProgress) error {

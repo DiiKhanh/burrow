@@ -54,9 +54,12 @@ type JunkGroup struct {
 // ScanResult is the complete preview returned by Scan. Unreadable lists, in
 // group order, the junk groups macOS privacy protection kept the Scan from
 // reading in full: their items may be missing, or the group missing entirely.
+// Locked lists the junk groups locked as the Scan ended; they may unlock
+// later, without a new Scan.
 type ScanResult struct {
 	Groups     []JunkGroup   `json:"groups"`
 	Unreadable []JunkGroupID `json:"unreadable"`
+	Locked     []LockedGroup `json:"locked"`
 }
 
 // ScanProgress is an observable point in a running Scan. Fraction is nil
@@ -76,10 +79,11 @@ type Scanner interface {
 
 // Engine is the deep module callers use for Clean operations.
 type Engine struct {
-	scanner Scanner
-	home    string
-	remover Remover
-	logger  *slog.Logger
+	scanner   Scanner
+	home      string
+	remover   Remover
+	processes Processes
+	logger    *slog.Logger
 	// busy is held by the running Scan or Clean: they never overlap.
 	busy sync.Mutex
 	// current is the latest ScanResult, the only items Clean may remove.
@@ -89,10 +93,11 @@ type Engine struct {
 // Options configures an Engine. Home is injected so nothing inside the
 // engine looks up the real home folder.
 type Options struct {
-	Scanner Scanner
-	Home    string
-	Remover Remover
-	Logger  *slog.Logger
+	Scanner   Scanner
+	Home      string
+	Remover   Remover
+	Processes Processes
+	Logger    *slog.Logger
 }
 
 // NewEngine constructs an Engine from its injected Home and adapters.
@@ -102,10 +107,11 @@ func NewEngine(options Options) *Engine {
 		logger = slog.Default()
 	}
 	return &Engine{
-		scanner: options.Scanner,
-		home:    filepath.Clean(options.Home),
-		remover: options.Remover,
-		logger:  logger,
+		scanner:   options.Scanner,
+		home:      filepath.Clean(options.Home),
+		remover:   options.Remover,
+		processes: options.Processes,
+		logger:    logger,
 	}
 }
 
@@ -120,6 +126,12 @@ func (e *Engine) Scan(ctx context.Context, onProgress func(ScanProgress) error) 
 	result, err := e.scanner.Scan(ctx, onProgress)
 	if err != nil {
 		return ScanResult{}, err
+	}
+	// Not knowing which apps run must not cost the Scan: Review asks again
+	// within a second, and Clean refuses a lockable group meanwhile.
+	if result.Locked, err = e.Locked(); err != nil {
+		e.logger.Warn("could not tell which apps run", "error", err)
+		result.Locked = []LockedGroup{}
 	}
 	e.current = result
 	return result, nil

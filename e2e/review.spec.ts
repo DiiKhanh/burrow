@@ -138,3 +138,55 @@ test("says nothing about Full Disk Access when the Scan read everything", async 
   await expect(page.getByText("Protected access unavailable")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Open System Settings" })).toHaveCount(0);
 });
+
+test("locks Browsers while a browser is open and unlocks it once the browser quits", async ({ page }) => {
+  await review(page, "complete&browsers=Safari");
+  const browsers = page.getByRole("checkbox", { name: "Browsers", exact: true });
+  const row = page.getByRole("listitem").filter({ has: browsers });
+
+  await expect(row).toContainText("Safari is open. Quit it to clean.");
+  await expect(row).not.toContainText("Browser caches.");
+  await expect(browsers).toBeDisabled();
+  await expect(browsers).not.toBeChecked();
+  // 14.3 GB of defaults without Browsers' 2.5 GB.
+  await expect(page.getByText("11.8 GB selected")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Clean 10 items →" })).toBeEnabled();
+
+  await page.evaluate(() => window.burrowBrowsers?.quit("Safari"));
+
+  await expect(browsers).toBeEnabled();
+  await expect(browsers).toBeChecked();
+  await expect(row).toContainText("Browser caches. Sites may load slower the first time.");
+  await expect(page.getByText("14.3 GB selected")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Clean 13 items →" })).toBeEnabled();
+});
+
+test("names every open browser and stays locked until the last one quits", async ({ page }) => {
+  await review(page, "complete&browsers=Google Chrome,Safari,Arc");
+  const browsers = page.getByRole("checkbox", { name: "Browsers", exact: true });
+  const row = page.getByRole("listitem").filter({ has: browsers });
+
+  await expect(row).toContainText("Google Chrome, Safari, and Arc are open. Quit them to clean.");
+
+  await page.evaluate(() => window.burrowBrowsers?.quit("Safari"));
+  await expect(row).toContainText("Google Chrome and Arc are open. Quit them to clean.");
+
+  await page.evaluate(() => window.burrowBrowsers?.quit("Google Chrome"));
+  await expect(row).toContainText("Arc is open. Quit it to clean.");
+  await expect(browsers).toBeDisabled();
+
+  await page.evaluate(() => window.burrowBrowsers?.quit("Arc"));
+  await expect(browsers).toBeEnabled();
+});
+
+test("disables the single items of a locked group", async ({ page }) => {
+  await review(page, "complete&browsers=Firefox");
+  const browsers = page.getByRole("checkbox", { name: "Browsers", exact: true });
+  const row = page.getByRole("listitem").filter({ has: browsers });
+  await page.getByRole("button", { name: "Browsers items" }).click();
+
+  const item = page.getByRole("checkbox", { name: "/Users/test/Library/Caches/Firefox/Profiles" });
+  await expect(item).toBeDisabled();
+  await expect(item).not.toBeChecked();
+  await expect(row.getByText("0/3")).toBeVisible();
+});

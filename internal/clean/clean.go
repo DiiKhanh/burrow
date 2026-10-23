@@ -103,7 +103,7 @@ func (e *Engine) cleanGroup(ctx context.Context, realHome string, group JunkGrou
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		cleaned := e.remove(realHome, group.RemovalMethod, item)
+		cleaned := e.remove(realHome, group, item)
 		report.Items = append(report.Items, cleaned)
 		if cleaned.SkipReason == nil {
 			report.FreedBytes += item.Bytes
@@ -154,9 +154,14 @@ func (e *Engine) plan(selection []string) (unknown []string, groups []JunkGroup)
 	return unknown, groups
 }
 
-// remove checks item and removes it with method.
-func (e *Engine) remove(realHome string, method RemovalMethod, item JunkItem) CleanedItem {
-	cleaned := CleanedItem{ID: item.ID, Path: item.Path, Bytes: item.Bytes, Method: ptr(method)}
+// remove checks item of group and removes it with the group's method. An
+// item of a group locked right now is in use.
+func (e *Engine) remove(realHome string, group JunkGroup, item JunkItem) CleanedItem {
+	cleaned := CleanedItem{ID: item.ID, Path: item.Path, Bytes: item.Bytes, Method: ptr(group.RemovalMethod)}
+	if e.isLocked(group.ID) {
+		cleaned.SkipReason = ptr(InUse)
+		return cleaned
+	}
 	if reason, ok := e.guard(realHome, item.Path); !ok {
 		cleaned.SkipReason = ptr(reason)
 		return cleaned

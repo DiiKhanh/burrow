@@ -242,9 +242,10 @@ func TestCleanReportsABusyItemAsInUse(t *testing.T) {
 			RemovalMethod: clean.Delete,
 			Items:         []clean.JunkItem{item, {ID: "valid", Path: valid, Bytes: 10}},
 		}),
-		Home:    home,
-		Remover: remover,
-		Logger:  quiet,
+		Home:      home,
+		Remover:   remover,
+		Processes: cleantest.NewFakeProcesses(),
+		Logger:    quiet,
 	})
 	if _, err := engine.Scan(context.Background(), nil); err != nil {
 		t.Fatal(err)

@@ -9,6 +9,9 @@ const SEPARATOR = " · ";
 
 const dayOfYear = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" });
 
+/** "Firefox, Safari, and Arc". */
+const andList = new Intl.ListFormat("en-US", { type: "conjunction" });
+
 /** "21 days": the largest whole unit only. */
 function duration(seconds: number): string {
   if (seconds < 60) return plural(seconds, "second", "seconds");
@@ -86,6 +89,11 @@ export const strings = {
       scanAgain: "← Scan again",
       clean: (count: number) => `Clean ${plural(count, "item", "items")} →`,
       unreadable: "Protected access unavailable",
+      /** Why a locked junk group cannot be selected: "Safari is open. Quit it to clean." */
+      locked: (apps: readonly string[]) =>
+        apps.length === 1
+          ? `${andList.format(apps)} is open. Quit it to clean.`
+          : `${andList.format(apps)} are open. Quit them to clean.`,
     },
     fullDiskAccess: {
       label: "Full Disk Access",

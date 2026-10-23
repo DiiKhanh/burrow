@@ -1,6 +1,6 @@
 // Which junk items Review has selected. A selection is an immutable set of
 // junk item ids; every change returns a new one.
-import type { JunkGroup, ScanResult } from "../mygo";
+import type { JunkGroup, JunkGroupID, ScanResult } from "../mygo";
 
 export type Selection = ReadonlySet<string>;
 
@@ -10,6 +10,20 @@ export type GroupState = "all" | "some" | "none";
 /** Every item of the groups the engine marks as selected by default. */
 export function defaultSelection(result: ScanResult): Selection {
   return new Set(result.groups.filter((group) => group.defaultSelected).flatMap(itemIds));
+}
+
+/**
+ * The part of selection Clean may take: none of the items of a locked junk
+ * group. The rest of selection stays, so a group unlocks as it was.
+ */
+export function withoutLocked(
+  selection: Selection,
+  groups: readonly JunkGroup[],
+  locked: ReadonlySet<JunkGroupID>,
+): Selection {
+  const lockedIds = new Set(groups.filter((group) => locked.has(group.id)).flatMap(itemIds));
+  if (lockedIds.size === 0) return selection;
+  return new Set([...selection].filter((id) => !lockedIds.has(id)));
 }
 
 export function groupState(group: JunkGroup, selection: Selection): GroupState {

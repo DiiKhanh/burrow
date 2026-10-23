@@ -43,11 +43,18 @@ func TestCleanDeletesSelectedItemsAndKeepsTheRest(t *testing.T) {
 // scannedEngine returns an Engine whose current ScanResult holds groups.
 func scannedEngine(t *testing.T, home string, groups ...clean.JunkGroup) *clean.Engine {
 	t.Helper()
+	return scannedEngineWith(t, home, cleantest.NewFakeProcesses(), groups...)
+}
+
+// scannedEngineWith is scannedEngine with processes running on the Mac.
+func scannedEngineWith(t *testing.T, home string, processes clean.Processes, groups ...clean.JunkGroup) *clean.Engine {
+	t.Helper()
 	engine := clean.NewEngine(clean.Options{
-		Scanner: fixedScan(groups...),
-		Home:    home,
-		Remover: &cleantest.FakeRemover{},
-		Logger:  quiet,
+		Scanner:   fixedScan(groups...),
+		Home:      home,
+		Remover:   &cleantest.FakeRemover{},
+		Processes: processes,
+		Logger:    quiet,
 	})
 	if _, err := engine.Scan(context.Background(), nil); err != nil {
 		t.Fatal(err)
@@ -230,9 +237,10 @@ func TestCleanIsRefusedWhileAScanRuns(t *testing.T) {
 			<-release
 			return clean.ScanResult{}, nil
 		}),
-		Home:    newHome(t),
-		Remover: &cleantest.FakeRemover{},
-		Logger:  quiet,
+		Home:      newHome(t),
+		Remover:   &cleantest.FakeRemover{},
+		Processes: cleantest.NewFakeProcesses(),
+		Logger:    quiet,
 	})
 	scanned := make(chan error, 1)
 	go func() {

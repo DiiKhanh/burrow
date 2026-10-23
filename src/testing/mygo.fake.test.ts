@@ -14,9 +14,9 @@ describe("the MyGo client under test", () => {
     const updates = new Channel<ScanProgress>();
     const result = Clean.scan(updates);
 
-    fakeGo.scan.last.resolve({ groups: [], unreadable: [] });
+    fakeGo.scan.last.resolve({ groups: [], unreadable: [], locked: [] });
 
-    await expect(result).resolves.toEqual({ groups: [], unreadable: [] });
+    await expect(result).resolves.toEqual({ groups: [], unreadable: [], locked: [] });
     expect(fakeGo.scan.calls).toHaveLength(1);
   });
 

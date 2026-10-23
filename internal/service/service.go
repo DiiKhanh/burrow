@@ -17,7 +17,8 @@ import (
 // ErrCleanUnavailable means app startup has not configured the Clean engine.
 var ErrCleanUnavailable = errors.New("service: Clean engine unavailable")
 
-// Clean is the bound service behind the Clean tab: Scan and Clean.
+// Clean is the bound service behind the Clean tab: Scan, Clean, and the
+// locked junk groups.
 type Clean struct {
 	mu     sync.RWMutex
 	engine *clean.Engine
@@ -60,6 +61,20 @@ func (s *Clean) Clean(ctx context.Context, ids []string, updates *mygo.Channel[c
 		return clean.CleanReport{}, context.Canceled
 	}
 	return report, err
+}
+
+// Locked lists the junk groups locked right now, so Review unlocks a group
+// once its apps quit, without a new Scan.
+func (s *Clean) Locked() ([]clean.LockedGroup, error) {
+	engine, err := s.currentEngine()
+	if err != nil {
+		return nil, err
+	}
+	locked, err := engine.Locked()
+	if err != nil {
+		log.Printf("service: listing locked junk groups: %v", err)
+	}
+	return locked, err
 }
 
 func (s *Clean) currentEngine() (*clean.Engine, error) {
