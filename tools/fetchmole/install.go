@@ -20,7 +20,7 @@ import (
 const stampName = ".mole.lock"
 
 // install puts the release that lock pins into dest, unless dest already
-// holds it. It verifies both downloads first and swaps the new bundle in
+// holds it. It verifies every download first and swaps the new bundle in
 // whole, so a failure leaves the previous bundle as it was.
 func (f fetcher) install(ctx context.Context, lock Lock, dest string) error {
 	stamp, err := lock.encode()
@@ -37,9 +37,13 @@ func (f fetcher) install(ctx context.Context, lock Lock, dest string) error {
 	if err != nil {
 		return err
 	}
-	status, err := f.downloadVerified(ctx, f.statusURL(lock.Version), lock.StatusSHA256)
-	if err != nil {
-		return err
+	binaries := make(map[string][]byte)
+	for _, bin := range lock.binaries() {
+		data, err := f.downloadVerified(ctx, f.assetURL(lock.Version, bin.asset), bin.sha256)
+		if err != nil {
+			return err
+		}
+		binaries[bin.path] = data
 	}
 
 	parent := filepath.Dir(dest)
@@ -57,7 +61,7 @@ func (f fetcher) install(ctx context.Context, lock Lock, dest string) error {
 		return fmt.Errorf("opening up %s: %w", staging, err)
 	}
 
-	if err := unpack(staging, source, status, stamp); err != nil {
+	if err := unpack(staging, source, binaries, stamp); err != nil {
 		return err
 	}
 	if err := swap(staging, dest); err != nil {
@@ -74,7 +78,7 @@ func upToDate(dest string, stamp []byte) bool {
 	if err != nil || !bytes.Equal(current, stamp) {
 		return false
 	}
-	for _, program := range []string{mole.MoPath, mole.StatusPath} {
+	for _, program := range []string{mole.MoPath, mole.StatusPath, mole.AnalyzePath} {
 		info, err := os.Stat(filepath.Join(dest, program))
 		if err != nil || info.Mode().Perm()&0o111 == 0 {
 			return false
@@ -84,8 +88,9 @@ func upToDate(dest string, stamp []byte) bool {
 }
 
 // unpack writes the bundle into dir: Mole's entry points, bin/ and lib/
-// from the source tarball, the status binary, and the stamp.
-func unpack(dir string, source, status, stamp []byte) error {
+// from the source tarball, the release binaries by their bundle path, and
+// the stamp.
+func unpack(dir string, source []byte, binaries map[string][]byte, stamp []byte) error {
 	root, err := os.OpenRoot(dir)
 	if err != nil {
 		return fmt.Errorf("opening %s: %w", dir, err)
@@ -95,11 +100,13 @@ func unpack(dir string, source, status, stamp []byte) error {
 	if err := extract(root, source); err != nil {
 		return fmt.Errorf("unpacking Mole's source: %w", err)
 	}
-	if err := root.MkdirAll(filepath.Dir(mole.StatusPath), 0o755); err != nil {
-		return fmt.Errorf("creating %s: %w", filepath.Dir(mole.StatusPath), err)
-	}
-	if err := root.WriteFile(mole.StatusPath, status, 0o755); err != nil {
-		return fmt.Errorf("writing %s: %w", mole.StatusPath, err)
+	for path, data := range binaries {
+		if err := root.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			return fmt.Errorf("creating %s: %w", filepath.Dir(path), err)
+		}
+		if err := root.WriteFile(path, data, 0o755); err != nil {
+			return fmt.Errorf("writing %s: %w", path, err)
+		}
 	}
 	if err := root.WriteFile(stampName, stamp, 0o644); err != nil {
 		return fmt.Errorf("writing %s: %w", stampName, err)

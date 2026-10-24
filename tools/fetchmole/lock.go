@@ -6,15 +6,35 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+
+	"github.com/DiiKhanh/burrow/internal/mole"
 )
 
 // Lock pins the Mole release Burrow ships: its tag, and the SHA-256 of
 // the files Burrow downloads, as this repository recorded them. Mole's own
 // SHA256SUMS is never trusted instead.
 type Lock struct {
-	Version      string `json:"version"`
-	SourceSHA256 string `json:"source_sha256"`
-	StatusSHA256 string `json:"status_darwin_arm64_sha256"`
+	Version       string `json:"version"`
+	SourceSHA256  string `json:"source_sha256"`
+	StatusSHA256  string `json:"status_darwin_arm64_sha256"`
+	AnalyzeSHA256 string `json:"analyze_darwin_arm64_sha256"`
+}
+
+// releaseBinary is a prebuilt program of a Mole release that Burrow ships
+// beside the source: where the release publishes it and where it goes in
+// the bundle.
+type releaseBinary struct {
+	asset  string // e.g. status-darwin-arm64
+	path   string // relative to the bundle
+	sha256 string
+}
+
+// binaries lists the release binaries the lock pins.
+func (l Lock) binaries() []releaseBinary {
+	return []releaseBinary{
+		{asset: "status-darwin-arm64", path: mole.StatusPath, sha256: l.StatusSHA256},
+		{asset: "analyze-darwin-arm64", path: mole.AnalyzePath, sha256: l.AnalyzeSHA256},
+	}
 }
 
 var (
@@ -33,7 +53,11 @@ func (l Lock) validate() error {
 	if err := validateVersion(l.Version); err != nil {
 		return err
 	}
-	for name, sum := range map[string]string{"source_sha256": l.SourceSHA256, "status_darwin_arm64_sha256": l.StatusSHA256} {
+	for name, sum := range map[string]string{
+		"source_sha256":               l.SourceSHA256,
+		"status_darwin_arm64_sha256":  l.StatusSHA256,
+		"analyze_darwin_arm64_sha256": l.AnalyzeSHA256,
+	} {
 		if !sha256Pattern.MatchString(sum) {
 			return fmt.Errorf("%s %q is not a lowercase hex SHA-256", name, sum)
 		}

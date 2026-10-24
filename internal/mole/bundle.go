@@ -20,6 +20,9 @@ const (
 	// StatusPath is the status collector, relative to the bundle; Mole's
 	// own bin/status.sh runs it from there.
 	StatusPath = "bin/status-go"
+	// AnalyzePath is the disk analyzer, relative to the bundle; Mole's own
+	// bin/analyze.sh runs it from there.
+	AnalyzePath = "bin/analyze-go"
 )
 
 // Bundle is the Mole release Burrow ships. It never refers to an `mo` the
@@ -33,6 +36,9 @@ func (b Bundle) Mo() string { return filepath.Join(b.dir, MoPath) }
 
 // Status is the path of the bundled status collector.
 func (b Bundle) Status() string { return filepath.Join(b.dir, StatusPath) }
+
+// Analyze is the path of the bundled disk analyzer.
+func (b Bundle) Analyze() string { return filepath.Join(b.dir, AnalyzePath) }
 
 // ErrNotBundled means the resources hold no complete Mole bundle: run
 // `bun run fetch:mole`.
@@ -49,7 +55,7 @@ func Locate(resources string) (Bundle, error) {
 	}
 	for _, dir := range candidates {
 		b := Bundle{dir: dir}
-		if isExecutable(b.Mo()) && isExecutable(b.Status()) {
+		if isExecutable(b.Mo()) && isExecutable(b.Status()) && isExecutable(b.Analyze()) {
 			return b, nil
 		}
 	}

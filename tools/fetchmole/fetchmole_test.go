@@ -81,7 +81,10 @@ func moleSource(t *testing.T) []byte {
 	})
 }
 
-const statusBinary = "status binary"
+const (
+	statusBinary  = "status binary"
+	analyzeBinary = "analyze binary"
+)
 
 func sha(b []byte) string {
 	sum := sha256.Sum256(b)
@@ -104,6 +107,9 @@ func newFakeGitHub(t *testing.T, version string, source []byte) *fakeGitHub {
 	mux.HandleFunc("/releases/download/"+version+"/status-darwin-arm64", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, statusBinary)
 	})
+	mux.HandleFunc("/releases/download/"+version+"/analyze-darwin-arm64", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, analyzeBinary)
+	})
 	gh.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gh.requests.Add(1)
 		mux.ServeHTTP(w, r)
@@ -117,7 +123,16 @@ func (gh *fakeGitHub) fetcher() fetcher {
 }
 
 func validLock(source []byte) Lock {
-	return Lock{Version: "V1.0.0", SourceSHA256: sha(source), StatusSHA256: sha([]byte(statusBinary))}
+	return lockOf("V1.0.0", source)
+}
+
+func lockOf(version string, source []byte) Lock {
+	return Lock{
+		Version:       version,
+		SourceSHA256:  sha(source),
+		StatusSHA256:  sha([]byte(statusBinary)),
+		AnalyzeSHA256: sha([]byte(analyzeBinary)),
+	}
 }
 
 func readFile(t *testing.T, path string) string {
@@ -129,7 +144,7 @@ func readFile(t *testing.T, path string) string {
 	return string(b)
 }
 
-func TestInstallUnpacksTheEntryPointsAndTheStatusBinary(t *testing.T) {
+func TestInstallUnpacksTheEntryPointsAndTheBinaries(t *testing.T) {
 	source := moleSource(t)
 	gh := newFakeGitHub(t, "V1.0.0", source)
 	dest := filepath.Join(t.TempDir(), "mole")
@@ -147,7 +162,10 @@ func TestInstallUnpacksTheEntryPointsAndTheStatusBinary(t *testing.T) {
 	if got := readFile(t, filepath.Join(dest, "bin/status-go")); got != statusBinary {
 		t.Errorf("bin/status-go = %q", got)
 	}
-	for _, exe := range []string{"mole", "mo", "bin/clean.sh", "bin/status-go"} {
+	if got := readFile(t, filepath.Join(dest, "bin/analyze-go")); got != analyzeBinary {
+		t.Errorf("bin/analyze-go = %q", got)
+	}
+	for _, exe := range []string{"mole", "mo", "bin/clean.sh", "bin/status-go", "bin/analyze-go"} {
 		info, err := os.Stat(filepath.Join(dest, exe))
 		if err != nil {
 			t.Fatal(err)
@@ -180,9 +198,15 @@ func TestInstallFailsOnAChecksumMismatchAndKeepsTheOldBundle(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	other := sha([]byte("other"))
+	sourceMismatch, statusMismatch, analyzeMismatch := validLock(source), validLock(source), validLock(source)
+	sourceMismatch.SourceSHA256 = other
+	statusMismatch.StatusSHA256 = other
+	analyzeMismatch.AnalyzeSHA256 = other
 	for name, lock := range map[string]Lock{
-		"source": {Version: "V1.0.0", SourceSHA256: sha([]byte("other")), StatusSHA256: sha([]byte(statusBinary))},
-		"status": {Version: "V1.0.0", SourceSHA256: sha(source), StatusSHA256: sha([]byte("other"))},
+		"source":  sourceMismatch,
+		"status":  statusMismatch,
+		"analyze": analyzeMismatch,
 	} {
 		t.Run(name, func(t *testing.T) {
 			err := gh.fetcher().install(context.Background(), lock, dest)
@@ -215,22 +239,26 @@ func TestInstallSkipsTheDownloadWhenTheBundleMatchesTheLock(t *testing.T) {
 }
 
 func TestInstallRepairsABundleMissingAProgram(t *testing.T) {
-	source := moleSource(t)
-	gh := newFakeGitHub(t, "V1.0.0", source)
-	dest := filepath.Join(t.TempDir(), "mole")
-	f := gh.fetcher()
+	for program, want := range map[string]string{"bin/status-go": statusBinary, "bin/analyze-go": analyzeBinary} {
+		t.Run(program, func(t *testing.T) {
+			source := moleSource(t)
+			gh := newFakeGitHub(t, "V1.0.0", source)
+			dest := filepath.Join(t.TempDir(), "mole")
+			f := gh.fetcher()
 
-	if err := f.install(context.Background(), validLock(source), dest); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Remove(filepath.Join(dest, "bin/status-go")); err != nil {
-		t.Fatal(err)
-	}
-	if err := f.install(context.Background(), validLock(source), dest); err != nil {
-		t.Fatal(err)
-	}
-	if got := readFile(t, filepath.Join(dest, "bin/status-go")); got != statusBinary {
-		t.Errorf("bin/status-go = %q", got)
+			if err := f.install(context.Background(), validLock(source), dest); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Remove(filepath.Join(dest, program)); err != nil {
+				t.Fatal(err)
+			}
+			if err := f.install(context.Background(), validLock(source), dest); err != nil {
+				t.Fatal(err)
+			}
+			if got := readFile(t, filepath.Join(dest, program)); got != want {
+				t.Errorf("%s = %q", program, got)
+			}
+		})
 	}
 }
 
@@ -245,7 +273,7 @@ func TestInstallReplacesABundleOfAnotherVersion(t *testing.T) {
 	if err := newFakeGitHub(t, "V1.0.0", oldSource).fetcher().install(context.Background(), validLock(oldSource), dest); err != nil {
 		t.Fatal(err)
 	}
-	newLock := Lock{Version: "V2.0.0", SourceSHA256: sha(newSource), StatusSHA256: sha([]byte(statusBinary))}
+	newLock := lockOf("V2.0.0", newSource)
 	if err := newFakeGitHub(t, "V2.0.0", newSource).fetcher().install(context.Background(), newLock, dest); err != nil {
 		t.Fatal(err)
 	}
@@ -267,7 +295,7 @@ func TestInstallRejectsEntriesOutsideTheBundle(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			source := makeTarball(t, []tarEntry{{name: "Mole-1.0.0/mole", body: "x", mode: 0o755}, entry})
 			dest := filepath.Join(t.TempDir(), "mole")
-			lock := Lock{Version: "V1.0.0", SourceSHA256: sha(source), StatusSHA256: sha([]byte(statusBinary))}
+			lock := validLock(source)
 
 			err := newFakeGitHub(t, "V1.0.0", source).fetcher().install(context.Background(), lock, dest)
 			if err == nil {
@@ -307,7 +335,7 @@ func TestPinRejectsAVersionThatIsNotAMoleTag(t *testing.T) {
 
 func TestLockRoundTripsThroughItsFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "mole.lock")
-	want := Lock{Version: "V1.0.0", SourceSHA256: sha([]byte("a")), StatusSHA256: sha([]byte("b"))}
+	want := Lock{Version: "V1.0.0", SourceSHA256: sha([]byte("a")), StatusSHA256: sha([]byte("b")), AnalyzeSHA256: sha([]byte("c"))}
 
 	if err := writeLock(path, want); err != nil {
 		t.Fatal(err)
@@ -322,9 +350,11 @@ func TestLockRoundTripsThroughItsFile(t *testing.T) {
 }
 
 func TestReadLockRejectsAnIncompleteLock(t *testing.T) {
+	a, b, c := sha([]byte("a")), sha([]byte("b")), sha([]byte("c"))
 	for name, body := range map[string]string{
-		"no version":     `{"source_sha256": "` + sha([]byte("a")) + `", "status_darwin_arm64_sha256": "` + sha([]byte("b")) + `"}`,
-		"short checksum": `{"version": "V1.0.0", "source_sha256": "abc", "status_darwin_arm64_sha256": "` + sha([]byte("b")) + `"}`,
+		"no version":     `{"source_sha256": "` + a + `", "status_darwin_arm64_sha256": "` + b + `", "analyze_darwin_arm64_sha256": "` + c + `"}`,
+		"short checksum": `{"version": "V1.0.0", "source_sha256": "abc", "status_darwin_arm64_sha256": "` + b + `", "analyze_darwin_arm64_sha256": "` + c + `"}`,
+		"no analyze":     `{"version": "V1.0.0", "source_sha256": "` + a + `", "status_darwin_arm64_sha256": "` + b + `"}`,
 		"unknown field":  `{"version": "V1.0.0", "source": "x"}`,
 	} {
 		t.Run(name, func(t *testing.T) {

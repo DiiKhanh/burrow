@@ -157,6 +157,30 @@ func TestIntegrationBundledStatusPrintsMetrics(t *testing.T) {
 	}
 }
 
+func TestIntegrationBundledAnalyzeMeasuresAFolder(t *testing.T) {
+	folder := t.TempDir()
+	if err := os.WriteFile(filepath.Join(folder, "big.bin"), bytes.Repeat([]byte{1}, 1<<20), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, err := command(t, bundled(t).Analyze(), "--json", folder).Output()
+	if err != nil {
+		t.Fatalf("analyze --json: %v\n%s", err, out)
+	}
+	var measured struct {
+		Path    string `json:"path"`
+		Entries []struct {
+			Name string `json:"name"`
+			Size int64  `json:"size"`
+		} `json:"entries"`
+	}
+	if err := json.Unmarshal(out, &measured); err != nil {
+		t.Fatalf("analyze --json printed no JSON object: %v\n%.500s", err, out)
+	}
+	if len(measured.Entries) != 1 || measured.Entries[0].Name != "big.bin" || measured.Entries[0].Size < 1<<20 {
+		t.Errorf("analyze --json %s measured %+v, want big.bin of at least 1 MiB", folder, measured.Entries)
+	}
+}
+
 // A Trash Mole cannot list stands in for one macOS hides without Full Disk
 // Access: the bundled Mole says so in the words the adapter reads.
 func TestIntegrationBundledMoReportsAnUnlistableTrash(t *testing.T) {
