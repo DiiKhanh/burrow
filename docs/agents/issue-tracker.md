@@ -14,6 +14,10 @@ Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all o
 
 Infer the repo from `git remote -v`; `gh` does this automatically when run inside a clone.
 
+## Merging pull requests
+
+The repo squash-merges and deletes the head branch on merge, and GitHub closes any PR whose base branch is deleted. Before merging a PR that another PR is stacked on, retarget the child: `gh pr edit <child> --base main`, then `gh pr merge <parent> --squash --delete-branch`, then rebase the child onto `main`.
+
 ## Pull requests as a triage surface
 
 **PRs as a request surface: no.** _(Set to `yes` if this repo treats external PRs as feature requests; `/triage` reads this flag.)_
