@@ -35,6 +35,7 @@ export const strings = {
     label: "Tabs",
     clean: "Clean",
     status: "Status",
+    space: "Space",
   },
   clean: {
     steps: {

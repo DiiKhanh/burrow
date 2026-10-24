@@ -1,4 +1,4 @@
-export const TABS = ["clean", "status"] as const;
+export const TABS = ["clean", "status", "space"] as const;
 
 export type Tab = (typeof TABS)[number];
 

@@ -6,6 +6,7 @@ import { isTab, TABS, type Tab, tabForShortcut } from "./tabs";
 const BACKGROUND: Record<Tab, string> = {
   clean: "from-clean-top to-clean-bottom",
   status: "from-status-top to-status-bottom",
+  space: "from-space-top to-space-bottom",
 };
 
 type Props = { panels: Record<Tab, ReactNode> };
@@ -15,7 +16,11 @@ type Props = { panels: Record<Tab, ReactNode> };
  * the title bar, and the background follows the tab.
  */
 export function Window({ panels }: Props) {
-  const [tab, setTab] = useState<Tab>("clean");
+  // PROTOTYPE (#55): ?tab= opens a tab directly.
+  const [tab, setTab] = useState<Tab>(() => {
+    const asked = new URLSearchParams(window.location.search).get("tab") ?? "";
+    return isTab(asked) ? asked : "clean";
+  });
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
