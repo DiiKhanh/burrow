@@ -10,7 +10,7 @@ import (
 )
 
 // maxDownload bounds what a download may weigh: Mole's source tarball and
-// status binary are a few MB each.
+// release binaries are a few MB each.
 const maxDownload = 256 << 20
 
 // fetcher downloads Mole releases from GitHub, or from a test server.
@@ -24,8 +24,8 @@ func (f fetcher) sourceURL(version string) string {
 	return f.baseURL + "/archive/refs/tags/" + version + ".tar.gz"
 }
 
-func (f fetcher) statusURL(version string) string {
-	return f.baseURL + "/releases/download/" + version + "/status-darwin-arm64"
+func (f fetcher) assetURL(version, asset string) string {
+	return f.baseURL + "/releases/download/" + version + "/" + asset
 }
 
 func (f fetcher) download(ctx context.Context, url string) ([]byte, error) {
@@ -84,9 +84,18 @@ func (f fetcher) pin(ctx context.Context, version string) (Lock, error) {
 	if err != nil {
 		return Lock{}, err
 	}
-	status, err := f.download(ctx, f.statusURL(version))
+	status, err := f.download(ctx, f.assetURL(version, statusAsset))
 	if err != nil {
 		return Lock{}, err
 	}
-	return Lock{Version: version, SourceSHA256: sha256Hex(source), StatusSHA256: sha256Hex(status)}, nil
+	analyze, err := f.download(ctx, f.assetURL(version, analyzeAsset))
+	if err != nil {
+		return Lock{}, err
+	}
+	return Lock{
+		Version:       version,
+		SourceSHA256:  sha256Hex(source),
+		StatusSHA256:  sha256Hex(status),
+		AnalyzeSHA256: sha256Hex(analyze),
+	}, nil
 }

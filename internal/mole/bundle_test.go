@@ -8,10 +8,10 @@ import (
 	"testing"
 )
 
-// fakeBundle writes a bundle with executable mo and status into dir.
+// fakeBundle writes a bundle with executable mo, status and analyze into dir.
 func fakeBundle(t *testing.T, dir string) {
 	t.Helper()
-	for _, path := range []string{MoPath, StatusPath} {
+	for _, path := range Programs {
 		full := filepath.Join(dir, path)
 		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
 			t.Fatal(err)
@@ -36,6 +36,9 @@ func TestLocateFindsTheBundleInsideTheApp(t *testing.T) {
 	if want := filepath.Join(resources, "mole", "bin", "status-go"); b.Status() != want {
 		t.Errorf("Status() = %s, want %s", b.Status(), want)
 	}
+	if want := filepath.Join(resources, "mole", "bin", "analyze-go"); b.Analyze() != want {
+		t.Errorf("Analyze() = %s, want %s", b.Analyze(), want)
+	}
 }
 
 func TestLocateFindsTheBundleInTheProjectResources(t *testing.T) {
@@ -58,6 +61,12 @@ func TestLocateFailsWithoutACompleteBundle(t *testing.T) {
 		"no status": func(t *testing.T, resources string) {
 			fakeBundle(t, filepath.Join(resources, "mole"))
 			if err := os.Remove(filepath.Join(resources, "mole", StatusPath)); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"no analyze": func(t *testing.T, resources string) {
+			fakeBundle(t, filepath.Join(resources, "mole"))
+			if err := os.Remove(filepath.Join(resources, "mole", AnalyzePath)); err != nil {
 				t.Fatal(err)
 			}
 		},
