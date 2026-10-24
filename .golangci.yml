@@ -11,6 +11,7 @@ linters:
   enable:
     - errorlint
     - misspell
+    - perfsprint
     - unconvert
 
 formatters:
