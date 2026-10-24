@@ -5,7 +5,7 @@ Burrow is a macOS cleaner app with a GUI, built on top of Mole (https://github.c
 ## Language
 
 **Burrow**:
-This app: a macOS desktop app that frees disk space and shows system health.
+This app: a macOS desktop app that frees disk space, shows what takes it up, and shows system health.
 _Avoid_: Mole, cleaner-app
 
 **Mole**:
@@ -51,6 +51,22 @@ _Avoid_: Soft delete, recycle
 **Skipped item**:
 A selected junk item that Clean did not remove, always with a reason (in use, permission denied, protected, already gone).
 _Avoid_: Failed item, error
+
+**Space**:
+The feature that shows what takes up disk space on the Mac, folder by folder, and lets the user move what they pick under their home folder to the Trash.
+_Avoid_: Analyze, Disk, Space Lens
+
+**Measure**:
+The step of Space that computes the size of one folder's contents, or of the machine-wide overview, without removing anything.
+_Avoid_: Scan, analyze, index
+
+**Space item**:
+One file or folder shown in Space with its size. Unlike a junk item, nothing proposed it for removal.
+_Avoid_: Entry, node, junk item
+
+**Insight**:
+A named location that Mole flags as commonly taking hidden space (e.g. iOS Backups, Old Downloads), shown in the Space overview.
+_Avoid_: Suggestion, hint, hotspot
 
 **Status**:
 The feature that shows live system health of the Mac.
