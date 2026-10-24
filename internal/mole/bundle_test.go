@@ -11,7 +11,7 @@ import (
 // fakeBundle writes a bundle with executable mo, status and analyze into dir.
 func fakeBundle(t *testing.T, dir string) {
 	t.Helper()
-	for _, path := range []string{MoPath, StatusPath, AnalyzePath} {
+	for _, path := range Programs {
 		full := filepath.Join(dir, path)
 		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
 			t.Fatal(err)

@@ -78,7 +78,7 @@ func upToDate(dest string, stamp []byte) bool {
 	if err != nil || !bytes.Equal(current, stamp) {
 		return false
 	}
-	for _, program := range []string{mole.MoPath, mole.StatusPath, mole.AnalyzePath} {
+	for _, program := range mole.Programs {
 		info, err := os.Stat(filepath.Join(dest, program))
 		if err != nil || info.Mode().Perm()&0o111 == 0 {
 			return false

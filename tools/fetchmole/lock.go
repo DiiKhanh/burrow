@@ -29,11 +29,17 @@ type releaseBinary struct {
 	sha256 string
 }
 
+// The release assets Burrow ships, as Mole publishes them.
+const (
+	statusAsset  = "status-darwin-arm64"
+	analyzeAsset = "analyze-darwin-arm64"
+)
+
 // binaries lists the release binaries the lock pins.
 func (l Lock) binaries() []releaseBinary {
 	return []releaseBinary{
-		{asset: "status-darwin-arm64", path: mole.StatusPath, sha256: l.StatusSHA256},
-		{asset: "analyze-darwin-arm64", path: mole.AnalyzePath, sha256: l.AnalyzeSHA256},
+		{asset: statusAsset, path: mole.StatusPath, sha256: l.StatusSHA256},
+		{asset: analyzeAsset, path: mole.AnalyzePath, sha256: l.AnalyzeSHA256},
 	}
 }
 

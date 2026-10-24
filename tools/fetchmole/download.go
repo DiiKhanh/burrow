@@ -84,11 +84,11 @@ func (f fetcher) pin(ctx context.Context, version string) (Lock, error) {
 	if err != nil {
 		return Lock{}, err
 	}
-	status, err := f.download(ctx, f.assetURL(version, "status-darwin-arm64"))
+	status, err := f.download(ctx, f.assetURL(version, statusAsset))
 	if err != nil {
 		return Lock{}, err
 	}
-	analyze, err := f.download(ctx, f.assetURL(version, "analyze-darwin-arm64"))
+	analyze, err := f.download(ctx, f.assetURL(version, analyzeAsset))
 	if err != nil {
 		return Lock{}, err
 	}

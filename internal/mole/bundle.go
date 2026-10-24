@@ -25,6 +25,10 @@ const (
 	AnalyzePath = "bin/analyze-go"
 )
 
+// Programs are the executables, relative to the bundle, without which it
+// is incomplete.
+var Programs = []string{MoPath, StatusPath, AnalyzePath}
+
 // Bundle is the Mole release Burrow ships. It never refers to an `mo` the
 // user installed.
 type Bundle struct {
@@ -54,12 +58,20 @@ func Locate(resources string) (Bundle, error) {
 		filepath.Join(resources, runtime.GOOS+"-"+runtime.GOARCH, Dir),
 	}
 	for _, dir := range candidates {
-		b := Bundle{dir: dir}
-		if isExecutable(b.Mo()) && isExecutable(b.Status()) && isExecutable(b.Analyze()) {
-			return b, nil
+		if complete(dir) {
+			return Bundle{dir: dir}, nil
 		}
 	}
 	return Bundle{}, fmt.Errorf("%w (looked in %s)", ErrNotBundled, resources)
+}
+
+func complete(dir string) bool {
+	for _, program := range Programs {
+		if !isExecutable(filepath.Join(dir, program)) {
+			return false
+		}
+	}
+	return true
 }
 
 func isExecutable(path string) bool {

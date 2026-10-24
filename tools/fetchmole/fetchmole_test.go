@@ -350,11 +350,11 @@ func TestLockRoundTripsThroughItsFile(t *testing.T) {
 }
 
 func TestReadLockRejectsAnIncompleteLock(t *testing.T) {
-	a, b, c := sha([]byte("a")), sha([]byte("b")), sha([]byte("c"))
+	sourceSum, statusSum, analyzeSum := sha([]byte("a")), sha([]byte("b")), sha([]byte("c"))
 	for name, body := range map[string]string{
-		"no version":     `{"source_sha256": "` + a + `", "status_darwin_arm64_sha256": "` + b + `", "analyze_darwin_arm64_sha256": "` + c + `"}`,
-		"short checksum": `{"version": "V1.0.0", "source_sha256": "abc", "status_darwin_arm64_sha256": "` + b + `", "analyze_darwin_arm64_sha256": "` + c + `"}`,
-		"no analyze":     `{"version": "V1.0.0", "source_sha256": "` + a + `", "status_darwin_arm64_sha256": "` + b + `"}`,
+		"no version":     `{"source_sha256": "` + sourceSum + `", "status_darwin_arm64_sha256": "` + statusSum + `", "analyze_darwin_arm64_sha256": "` + analyzeSum + `"}`,
+		"short checksum": `{"version": "V1.0.0", "source_sha256": "abc", "status_darwin_arm64_sha256": "` + statusSum + `", "analyze_darwin_arm64_sha256": "` + analyzeSum + `"}`,
+		"no analyze":     `{"version": "V1.0.0", "source_sha256": "` + sourceSum + `", "status_darwin_arm64_sha256": "` + statusSum + `"}`,
 		"unknown field":  `{"version": "V1.0.0", "source": "x"}`,
 	} {
 		t.Run(name, func(t *testing.T) {
