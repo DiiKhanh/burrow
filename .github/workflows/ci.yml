@@ -31,6 +31,7 @@ jobs:
           bun-version-file: package.json
       - run: bun install --frozen-lockfile
       - run: bun run check:go
+      - run: bun run check:repo
       - run: bun run test:integration
 
   web:
