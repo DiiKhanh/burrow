@@ -19,7 +19,7 @@ A Scan or Clean finishes with what it can read and reports the rest. When a side
 ## Tests
 
 - Use a table when the cases share setup and assertion. Each case gets a name, so a failure says which one. Use separate named tests when the setup differs. Both are fine; reject mixed shapes such as unnamed slices of inputs.
-- A test reuses the production type or a `*test` helper package (`internal/clean/cleantest`, `internal/testhome`) and doesn't re-declare a wire or file format, such as history JSON, by hand.
+- A test reuses the production type or a `*test` helper package (`internal/removal/removaltest`, `internal/testhome`) and doesn't re-declare a wire or file format, such as history JSON, by hand.
 - Test fakes return new values and don't change objects they were handed.
 - Probe code goes in the scratchpad or a throwaway branch, never in a package of the repo.
 

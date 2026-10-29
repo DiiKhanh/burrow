@@ -182,7 +182,7 @@ export interface Process {
   memoryBytes: number | null;
 }
 
-/** RemovalMethod says how a later Clean removes a group. */
+/** RemovalMethod says how an item is removed. */
 export type RemovalMethod = "delete" | "move-to-trash";
 
 /**
@@ -226,7 +226,7 @@ export interface Series {
 /** SettingsPane is the System Settings pane Burrow managed to open. */
 export type SettingsPane = "full-disk-access" | "privacy-security";
 
-/** SkipReason is why Clean left a selected junk item in place. */
+/** SkipReason is why a selected item was left in place. */
 export type SkipReason = "in_use" | "permission_denied" | "protected" | "already_gone";
 
 /**

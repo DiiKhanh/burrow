@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/DiiKhanh/burrow/internal/clean"
-	"github.com/DiiKhanh/burrow/internal/clean/cleantest"
+	"github.com/DiiKhanh/burrow/internal/removal/removaltest"
 )
 
 // validCache is the item cleanWithValidItem cleans next to the one under test.
@@ -229,7 +229,7 @@ func TestCleanReportsABusyItemAsInUse(t *testing.T) {
 	home := newHome(t)
 	busy := writeFile(t, home, "Library/Caches/busy.cache", 5)
 	valid := writeFile(t, home, validCache, 10)
-	remover := &cleantest.FakeRemover{Fail: func(path string) error {
+	remover := &removaltest.FakeRemover{Fail: func(path string) error {
 		if path == busy {
 			return &os.PathError{Op: "unlinkat", Path: path, Err: syscall.EBUSY}
 		}
@@ -244,7 +244,7 @@ func TestCleanReportsABusyItemAsInUse(t *testing.T) {
 		}),
 		Home:      home,
 		Remover:   remover,
-		Processes: cleantest.NewFakeProcesses(),
+		Processes: removaltest.NewFakeProcesses(),
 		Logger:    quiet,
 	})
 	if _, err := engine.Scan(context.Background(), nil); err != nil {

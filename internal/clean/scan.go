@@ -8,6 +8,8 @@ import (
 	"log/slog"
 	"path/filepath"
 	"sync"
+
+	"github.com/DiiKhanh/burrow/internal/removal"
 )
 
 // ErrBusy means a Scan or Clean is already running: they never overlap, so
@@ -29,11 +31,11 @@ const (
 )
 
 // RemovalMethod says how a later Clean removes a group.
-type RemovalMethod string
+type RemovalMethod = removal.RemovalMethod
 
 const (
-	Delete      RemovalMethod = "delete"
-	MoveToTrash RemovalMethod = "move-to-trash"
+	Delete      = removal.Delete
+	MoveToTrash = removal.MoveToTrash
 )
 
 // JunkItem is one path proposed by a Scan.
@@ -81,8 +83,8 @@ type Scanner interface {
 type Engine struct {
 	scanner   Scanner
 	home      string
-	remover   Remover
-	processes Processes
+	remover   removal.Remover
+	processes removal.Processes
 	logger    *slog.Logger
 	// busy is held by the running Scan or Clean: they never overlap.
 	busy sync.Mutex
@@ -95,8 +97,8 @@ type Engine struct {
 type Options struct {
 	Scanner   Scanner
 	Home      string
-	Remover   Remover
-	Processes Processes
+	Remover   removal.Remover
+	Processes removal.Processes
 	Logger    *slog.Logger
 }
 

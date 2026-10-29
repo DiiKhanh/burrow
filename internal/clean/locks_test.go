@@ -7,11 +7,11 @@ import (
 	"testing"
 
 	"github.com/DiiKhanh/burrow/internal/clean"
-	"github.com/DiiKhanh/burrow/internal/clean/cleantest"
+	"github.com/DiiKhanh/burrow/internal/removal/removaltest"
 )
 
 func TestLockedNamesTheRunningBrowsersThatLockBrowsers(t *testing.T) {
-	processes := cleantest.NewFakeProcesses("Finder", "Safari", "Google Chrome Helper", "firefox")
+	processes := removaltest.NewFakeProcesses("Finder", "Safari", "Google Chrome Helper", "firefox")
 	engine := clean.NewEngine(clean.Options{Processes: processes})
 
 	locked, err := engine.Locked()
@@ -26,7 +26,7 @@ func TestLockedNamesTheRunningBrowsersThatLockBrowsers(t *testing.T) {
 }
 
 func TestLockedIsEmptyWhileNoBrowserRuns(t *testing.T) {
-	engine := clean.NewEngine(clean.Options{Processes: cleantest.NewFakeProcesses("Finder", "SafariBookmarksS")})
+	engine := clean.NewEngine(clean.Options{Processes: removaltest.NewFakeProcesses("Finder", "SafariBookmarksS")})
 
 	locked, err := engine.Locked()
 	if err != nil {
@@ -40,7 +40,7 @@ func TestLockedIsEmptyWhileNoBrowserRuns(t *testing.T) {
 func TestScanReportsTheLockedJunkGroups(t *testing.T) {
 	engine := clean.NewEngine(clean.Options{
 		Scanner:   fixedScan(clean.JunkGroup{ID: clean.Browsers}),
-		Processes: cleantest.NewFakeProcesses("Arc"),
+		Processes: removaltest.NewFakeProcesses("Arc"),
 	})
 
 	result, err := engine.Scan(context.Background(), nil)
@@ -55,7 +55,7 @@ func TestScanReportsTheLockedJunkGroups(t *testing.T) {
 }
 
 func TestScanStillEndsWhenItCannotTellWhichAppsRun(t *testing.T) {
-	processes := cleantest.NewFakeProcesses()
+	processes := removaltest.NewFakeProcesses()
 	processes.Fail(errors.New("sysctl refused"))
 	engine := clean.NewEngine(clean.Options{
 		Scanner:   fixedScan(clean.JunkGroup{ID: clean.Browsers}),
@@ -77,7 +77,7 @@ func TestCleanSkipsTheItemsOfALockedGroupAsInUse(t *testing.T) {
 	home := newHome(t)
 	chrome := writeFile(t, home, "Library/Caches/Google/Chrome/cache.db", 2_000)
 	logs := writeFile(t, home, "Library/Logs/app.log", 1_000)
-	processes := cleantest.NewFakeProcesses()
+	processes := removaltest.NewFakeProcesses()
 	engine := scannedEngineWith(t, home, processes,
 		clean.JunkGroup{ID: clean.Browsers, RemovalMethod: clean.Delete, Items: []clean.JunkItem{{ID: "chrome", Path: chrome, Bytes: 2_000}}},
 		clean.JunkGroup{ID: clean.LogsSavedState, RemovalMethod: clean.Delete, Items: []clean.JunkItem{{ID: "logs", Path: logs, Bytes: 1_000}}},
@@ -105,8 +105,8 @@ func TestCleanSkipsTheRestOfAGroupOnceItsAppStartsMidway(t *testing.T) {
 	home := newHome(t)
 	first := writeFile(t, home, "Library/Caches/com.apple.Safari/first.db", 1_000)
 	second := writeFile(t, home, "Library/Caches/com.apple.Safari/second.db", 2_000)
-	processes := cleantest.NewFakeProcesses()
-	remover := &cleantest.FakeRemover{Fail: func(string) error {
+	processes := removaltest.NewFakeProcesses()
+	remover := &removaltest.FakeRemover{Fail: func(string) error {
 		processes.Set("Safari")
 		return nil
 	}}
@@ -143,7 +143,7 @@ func TestCleanSkipsTheRestOfAGroupOnceItsAppStartsMidway(t *testing.T) {
 func TestCleanCleansABrowsersGroupOnceTheBrowserQuits(t *testing.T) {
 	home := newHome(t)
 	safari := writeFile(t, home, "Library/Caches/com.apple.Safari/cache.db", 2_000)
-	processes := cleantest.NewFakeProcesses("Safari")
+	processes := removaltest.NewFakeProcesses("Safari")
 	engine := scannedEngineWith(t, home, processes, clean.JunkGroup{
 		ID: clean.Browsers, RemovalMethod: clean.Delete, Items: []clean.JunkItem{{ID: "safari", Path: safari, Bytes: 2_000}},
 	})
@@ -164,7 +164,7 @@ func TestCleanCleansABrowsersGroupOnceTheBrowserQuits(t *testing.T) {
 func TestCleanSkipsALockableGroupAsInUseWhenItCannotTellWhichAppsRun(t *testing.T) {
 	home := newHome(t)
 	safari := writeFile(t, home, "Library/Caches/com.apple.Safari/cache.db", 2_000)
-	processes := cleantest.NewFakeProcesses()
+	processes := removaltest.NewFakeProcesses()
 	engine := scannedEngineWith(t, home, processes, clean.JunkGroup{
 		ID: clean.Browsers, RemovalMethod: clean.Delete, Items: []clean.JunkItem{{ID: "safari", Path: safari, Bytes: 2_000}},
 	})
@@ -179,17 +179,6 @@ func TestCleanSkipsALockableGroupAsInUseWhenItCannotTellWhichAppsRun(t *testing.
 	assertReport(t, report, clean.CleanReport{
 		Items: []clean.CleanedItem{{ID: "safari", Path: safari, Bytes: 2_000, Method: method(clean.Delete), SkipReason: reason(clean.InUse)}},
 	})
-}
-
-func TestOSProcessesListsThisProcess(t *testing.T) {
-	names, err := clean.OSProcesses{}.Names()
-	if err != nil {
-		t.Fatal(err)
-	}
-	// The kernel keeps at most 16 bytes of a process name: "clean.test".
-	if !slices.Contains(names, "clean.test") {
-		t.Fatalf("OSProcesses names miss clean.test among %d processes", len(names))
-	}
 }
 
 func equalLock(a, b clean.LockedGroup) bool {

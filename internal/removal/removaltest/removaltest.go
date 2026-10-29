@@ -1,5 +1,6 @@
-// Package cleantest holds test doubles for the Clean engine.
-package cleantest
+// Package removaltest holds test doubles for the removal package, which
+// Clean and Space share.
+package removaltest
 
 import (
 	"fmt"
@@ -7,7 +8,7 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/DiiKhanh/burrow/internal/clean"
+	"github.com/DiiKhanh/burrow/internal/removal"
 )
 
 // FakeRemover removes for real, but only inside the OS temp dir: it panics
@@ -26,11 +27,11 @@ type FakeRemover struct {
 	trashed []string
 }
 
-var _ clean.Remover = (*FakeRemover)(nil)
+var _ removal.Remover = (*FakeRemover)(nil)
 
 // Delete removes path and everything under it.
 func (r *FakeRemover) Delete(path string) error {
-	clean.RequireTempDirInTests(path)
+	removal.RequireTempDirInTests(path)
 	r.record(&r.deleted, path)
 	if err := r.failure(path); err != nil {
 		return err
@@ -41,11 +42,11 @@ func (r *FakeRemover) Delete(path string) error {
 // MoveToTrash moves path into TrashDir. Like the Finder, it gives an item
 // a numbered name, "Gone App 2", when TrashDir already holds its name.
 func (r *FakeRemover) MoveToTrash(path string) error {
-	clean.RequireTempDirInTests(path)
+	removal.RequireTempDirInTests(path)
 	if r.TrashDir == "" {
-		panic("cleantest: FakeRemover.MoveToTrash needs a TrashDir")
+		panic("removaltest: FakeRemover.MoveToTrash needs a TrashDir")
 	}
-	clean.RequireTempDirInTests(r.TrashDir)
+	removal.RequireTempDirInTests(r.TrashDir)
 	r.record(&r.trashed, path)
 	if err := r.failure(path); err != nil {
 		return err
@@ -107,7 +108,7 @@ type FakeProcesses struct {
 	err   error
 }
 
-var _ clean.Processes = (*FakeProcesses)(nil)
+var _ removal.Processes = (*FakeProcesses)(nil)
 
 // NewFakeProcesses returns processes with names running.
 func NewFakeProcesses(names ...string) *FakeProcesses {

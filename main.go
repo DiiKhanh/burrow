@@ -13,6 +13,7 @@ import (
 	"github.com/DiiKhanh/burrow/internal/clean"
 	"github.com/DiiKhanh/burrow/internal/engine"
 	"github.com/DiiKhanh/burrow/internal/mole"
+	"github.com/DiiKhanh/burrow/internal/removal"
 	"github.com/DiiKhanh/burrow/internal/service"
 	"github.com/egoist/mygo"
 )
@@ -39,8 +40,8 @@ func main() {
 		configureClean(clean.NewEngine(clean.Options{
 			Scanner:   mole.NewScanner(bundle, home, slog.Default()),
 			Home:      home,
-			Remover:   clean.OSRemover{Trash: mygo.Shell.TrashItem},
-			Processes: clean.OSProcesses{},
+			Remover:   removal.OSRemover{Trash: mygo.Shell.TrashItem},
+			Processes: removal.OSProcesses{},
 			Logger:    slog.Default(),
 		}))
 		win := mygo.NewWindow(mygo.WindowOptions{

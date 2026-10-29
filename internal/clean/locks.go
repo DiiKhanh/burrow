@@ -1,19 +1,9 @@
 package clean
 
 import (
-	"bytes"
 	"fmt"
-	"os"
 	"slices"
-
-	"golang.org/x/sys/unix"
 )
-
-// Processes lists the names of the processes running now, as the kernel
-// names them: the executable's name, cut to its first 16 bytes.
-type Processes interface {
-	Names() ([]string, error)
-}
 
 // LockedGroup is a locked junk group: Apps, the apps that own it, are
 // running, so nothing in it can be cleaned until they quit.
@@ -93,25 +83,4 @@ func (e *Engine) isLocked(group JunkGroupID) bool {
 		return true
 	}
 	return slices.ContainsFunc(locked, func(lock LockedGroup) bool { return lock.ID == group })
-}
-
-// OSProcesses lists the processes the user running Burrow runs on this Mac.
-// Another user's browser never touches this user's caches.
-type OSProcesses struct{}
-
-// Names returns the name of every process of this user the kernel lists.
-func (OSProcesses) Names() ([]string, error) {
-	procs, err := unix.SysctlKinfoProcSlice("kern.proc.uid", os.Getuid())
-	if err != nil {
-		return nil, fmt.Errorf("listing processes: %w", err)
-	}
-	names := make([]string, 0, len(procs))
-	for _, proc := range procs {
-		comm := proc.Proc.P_comm[:]
-		if end := bytes.IndexByte(comm, 0); end >= 0 {
-			comm = comm[:end]
-		}
-		names = append(names, string(comm))
-	}
-	return names, nil
 }
