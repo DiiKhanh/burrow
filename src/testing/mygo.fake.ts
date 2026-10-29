@@ -76,6 +76,7 @@ function pending<T>(): { promise: Promise<T> } & Pending<T> {
   };
 }
 
+/** Callers add to the call with Object.assign: a spread would freeze `cancelled` at false. */
 function streamCall<P, T>(updates: { onmessage: ((value: P) => void) | null; readonly closed: boolean }) {
   const settle = pending<T>();
   const call: StreamCall<P, T> = {
@@ -98,7 +99,7 @@ const locks = callLog<LockedCall>("Clean.locked");
 export const Clean = {
   clean: (ids: string[], updates: CleanUpdates): Promise<Real.CleanReport> => {
     const { call, promise } = streamCall<Real.CleanProgress, Real.CleanReport>(updates);
-    cleans.record({ ...call, ids: [...ids] });
+    cleans.record(Object.assign(call, { ids: [...ids] }));
     return promise;
   },
   locked: (): Promise<Real.LockedGroup[]> => {
@@ -116,7 +117,6 @@ export const Clean = {
 export const Space = {
   measure: (target: Real.MeasureTarget, updates: MeasureUpdates): Promise<Real.MeasureResult> => {
     const { call, promise } = streamCall<Real.NoProgress, Real.MeasureResult>(updates);
-    // Assigned, not spread: a spread would freeze `cancelled` at false.
     measures.record(Object.assign(call, { target: { ...target } }));
     return promise;
   },
