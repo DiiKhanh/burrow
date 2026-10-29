@@ -2,7 +2,8 @@
 // gets whole Scan and Clean runs without driving each step. Only
 // `vite --mode fake` installs it; Vitest drives `fakeGo` itself.
 import type { CleanProgress, CleanReport, LockedGroup, ScanProgress, ScanResult } from "../mygo";
-import type { CleanCall, FakeGo, ScanCall } from "./mygo.fake";
+import { overview } from "./measures";
+import type { CleanCall, FakeGo, MeasureCall, ScanCall } from "./mygo.fake";
 import { fullScan, longScan, unreadableScan } from "./scans";
 
 /** Scan results by the page's `?scan=` scenario; any other value gets fullScan. */
@@ -43,7 +44,7 @@ function lockedBy(browsers: Browsers): LockedGroup[] {
 }
 
 /** Waits ms, then reports whether the call is still running; a cancelled one ends as Go ends it. */
-async function stillRunning(call: ScanCall | CleanCall, ms: number): Promise<boolean> {
+async function stillRunning(call: ScanCall | CleanCall | MeasureCall, ms: number): Promise<boolean> {
   await new Promise((done) => setTimeout(done, ms));
   if (call.cancelled) call.reject(new Error("fake: cancelled"));
   return !call.cancelled;
@@ -113,12 +114,26 @@ async function runClean(call: CleanCall, scan: ScanResult, scenario: string | nu
   call.resolve(report);
 }
 
+/**
+ * Runs a Measure by `?measure=`: `running` never ends, `failed` fails, and
+ * any other value ends with the overview.
+ */
+async function runMeasure(call: MeasureCall, scenario: string | null) {
+  if (scenario === "failed") {
+    call.reject(new Error("fake: Measure failed"));
+    return;
+  }
+  if (!(await stillRunning(call, 30)) || scenario === "running") return;
+  call.resolve(overview);
+}
+
 function scanFor(scenario: string | null): ScanResult {
   return SCANS[scenario ?? ""] ?? fullScan;
 }
 
 /**
  * Settles every call by the scenarios in search, e.g. `?scan=unreadable&settings=fallback`.
+ * `?measure=` picks how a Space Measure runs (see runMeasure).
  * `?settings=` picks what System Settings opens: `fallback` only Privacy &
  * Security, `refused` nothing. `?browsers=` lists the open browsers, which
  * Playwright quits through `window.burrowBrowsers`.
@@ -135,6 +150,7 @@ export function installAutopilot(go: FakeGo, search: string) {
   go.scan.onCall((call) => void runScan(call, scan, browsers));
   go.clean.onCall((call) => void runClean(call, scanFor(scan), scenarios.get("clean"), browsers));
   go.locked.onCall((call) => call.resolve(lockedBy(browsers)));
+  go.measure.onCall((call) => void runMeasure(call, scenarios.get("measure")));
   go.privacy.onCall((call) => {
     const settings = scenarios.get("settings");
     if (settings === "refused") call.reject(new Error("System Settings did not open"));

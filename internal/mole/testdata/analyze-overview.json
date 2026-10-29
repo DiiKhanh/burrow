@@ -1,0 +1,76 @@
+{
+  "scan_status": "partial",
+  "path": "/",
+  "overview": true,
+  "entries": [
+    {
+      "scan_status": "partial",
+      "name": "User Library",
+      "path": "/Users/test/Library",
+      "size": 73074991104,
+      "is_dir": true
+    },
+    {
+      "scan_status": "partial",
+      "name": "Home",
+      "path": "/Users/test",
+      "size": 46363366256,
+      "is_dir": true
+    },
+    {
+      "scan_status": "complete",
+      "name": "Docker Data",
+      "path": "/Users/test/Library/Containers/com.docker.docker/Data",
+      "size": 21561749504,
+      "is_dir": true,
+      "insight": true
+    },
+    {
+      "scan_status": "complete",
+      "name": "Applications",
+      "path": "/Applications",
+      "size": 19704082432,
+      "is_dir": true
+    },
+    {
+      "scan_status": "partial",
+      "name": "System Library",
+      "path": "/Library",
+      "size": 6834159616,
+      "is_dir": true
+    },
+    {
+      "scan_status": "complete",
+      "name": "Xcode Simulators",
+      "path": "/Users/test/Library/Developer/CoreSimulator/Devices",
+      "size": 3065757696,
+      "is_dir": true,
+      "insight": true
+    },
+    {
+      "scan_status": "complete",
+      "name": "Old Downloads (90d+)",
+      "path": "/Users/test/Downloads",
+      "size": 3017911401,
+      "is_dir": true,
+      "insight": true
+    },
+    {
+      "scan_status": "complete",
+      "name": "Homebrew Cache",
+      "path": "/Users/test/Library/Caches/Homebrew",
+      "size": 181170176,
+      "is_dir": true,
+      "insight": true
+    },
+    {
+      "scan_status": "complete",
+      "name": "System Logs",
+      "path": "/Users/test/Library/Logs",
+      "size": 2109440,
+      "is_dir": true,
+      "insight": true
+    }
+  ],
+  "total_size": 173805297625
+}

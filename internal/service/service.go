@@ -11,6 +11,7 @@ import (
 
 	"github.com/DiiKhanh/burrow/internal/clean"
 	"github.com/DiiKhanh/burrow/internal/engine"
+	"github.com/DiiKhanh/burrow/internal/space"
 	"github.com/egoist/mygo"
 )
 
@@ -84,6 +85,41 @@ func (s *Clean) currentEngine() (*clean.Engine, error) {
 		return nil, ErrCleanUnavailable
 	}
 	return s.engine, nil
+}
+
+// ErrSpaceUnavailable means app startup has not configured the Space engine.
+var ErrSpaceUnavailable = errors.New("service: Space engine unavailable")
+
+// Space is the bound service behind the Space tab.
+type Space struct {
+	mu     sync.RWMutex
+	engine *space.Engine
+}
+
+// NewSpace returns the bound service and an app-wiring function, as NewClean.
+func NewSpace() (*Space, func(*space.Engine)) {
+	s := &Space{}
+	return s, func(engine *space.Engine) {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		s.engine = engine
+	}
+}
+
+// NoProgress is never sent: a Measure has no progress to report. The
+// channel that would carry it lets the page cancel the Measure.
+type NoProgress struct{}
+
+// Measure measures target. Space sends nothing through updates; MyGo
+// cancels ctx when the page closes it, which stops the analyzer.
+func (s *Space) Measure(ctx context.Context, target space.MeasureTarget, updates *mygo.Channel[NoProgress]) (space.MeasureResult, error) {
+	s.mu.RLock()
+	engine := s.engine
+	s.mu.RUnlock()
+	if engine == nil {
+		return space.MeasureResult{}, ErrSpaceUnavailable
+	}
+	return engine.Measure(ctx, target)
 }
 
 // Status is the bound service behind the Status tab: live system health.

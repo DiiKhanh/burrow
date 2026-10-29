@@ -35,6 +35,7 @@ export const strings = {
     label: "Tabs",
     clean: "Clean",
     status: "Status",
+    space: "Space",
   },
   clean: {
     steps: {
@@ -232,6 +233,30 @@ export const strings = {
       pid: "PID",
     },
     retrying: "Status paused, retrying…",
+  },
+  space: {
+    idle: {
+      title: "See what takes up your disk.",
+      description: "Space measures your Mac folder by folder. Nothing is removed.",
+      action: "Measure this Mac",
+    },
+    measuring: {
+      label: "Measure progress",
+      title: "Measuring…",
+      /** What the overview Measure measures, under the title. */
+      overview: "Applications, Library, your home folder and insights",
+      hint: "The first Measure of the whole Mac can take a minute.",
+      cancel: "Cancel",
+    },
+    error: "Measure could not finish. Try again.",
+    overview: {
+      /** The unit after the big number: "GB measured on this Mac". */
+      total: (unit: string) => `${unit} measured on this Mac`,
+      insights: "Insights",
+      insightsHint: "Places that quietly grow",
+      locations: "Locations",
+      count: (count: number) => plural(count, "item", "items"),
+    },
   },
   /** Shown in place of a value that could not be read. */
   unavailable: "-",

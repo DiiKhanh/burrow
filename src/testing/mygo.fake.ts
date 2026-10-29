@@ -8,6 +8,7 @@ import { installAutopilot } from "./autopilot";
 
 type ScanUpdates = Parameters<typeof Real.Clean.scan>[0];
 type CleanUpdates = Parameters<typeof Real.Clean.clean>[1];
+type MeasureUpdates = Parameters<typeof Real.Space.measure>[1];
 
 /** A call to the fake that the test settles, as Go would. */
 type Pending<T> = { resolve(value: T): void; reject(error?: Error): void };
@@ -21,6 +22,7 @@ export type StreamCall<P, T> = Pending<T> & { emit(progress: P): void; readonly 
 
 export type ScanCall = StreamCall<Real.ScanProgress, Real.ScanResult>;
 export type CleanCall = StreamCall<Real.CleanProgress, Real.CleanReport> & { readonly ids: readonly string[] };
+export type MeasureCall = StreamCall<Real.NoProgress, Real.MeasureResult> & { readonly target: Real.MeasureTarget };
 export type PrivacyCall = Pending<Real.SettingsPane>;
 export type LockedCall = Pending<Real.LockedGroup[]>;
 
@@ -89,6 +91,7 @@ function streamCall<P, T>(updates: { onmessage: ((value: P) => void) | null; rea
 
 const scans = callLog<ScanCall>("Clean.scan");
 const cleans = callLog<CleanCall>("Clean.clean");
+const measures = callLog<MeasureCall>("Space.measure");
 const privacy = callLog<PrivacyCall>("Privacy.openFullDiskAccess");
 const locks = callLog<LockedCall>("Clean.locked");
 
@@ -109,6 +112,15 @@ export const Clean = {
     return promise;
   },
 } as const satisfies typeof Real.Clean;
+
+export const Space = {
+  measure: (target: Real.MeasureTarget, updates: MeasureUpdates): Promise<Real.MeasureResult> => {
+    const { call, promise } = streamCall<Real.NoProgress, Real.MeasureResult>(updates);
+    // Assigned, not spread: a spread would freeze `cancelled` at false.
+    measures.record(Object.assign(call, { target: { ...target } }));
+    return promise;
+  },
+} as const satisfies typeof Real.Space;
 
 export const Privacy = {
   openFullDiskAccess: (): Promise<Real.SettingsPane> => {
@@ -160,6 +172,7 @@ export const fakeGo = {
   scan: scans.log,
   clean: cleans.log,
   locked: locks.log,
+  measure: measures.log,
   privacy: privacy.log,
   status: { emit: (snapshot: Real.Snapshot) => events.status.emit(snapshot) },
 };
@@ -171,6 +184,7 @@ export function resetFake() {
   scans.reset();
   cleans.reset();
   locks.reset();
+  measures.reset();
   privacy.reset();
 }
 

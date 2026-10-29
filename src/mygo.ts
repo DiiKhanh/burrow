@@ -144,6 +144,27 @@ export interface LockedGroup {
   apps: string[];
 }
 
+/**
+ * MeasureResult is what one Measure found. Items and Insights are each
+ * sorted largest first. Insights lie inside the items, so TotalBytes adds up
+ * the items only, never counting the same bytes twice.
+ */
+export interface MeasureResult {
+  target: MeasureTarget;
+  measuredAt: string;
+  items: SpaceItem[];
+  insights: SpaceItem[];
+  totalBytes: number;
+}
+
+/**
+ * MeasureTarget says what one Measure measures. Each Space item that opens
+ * will carry the target the UI sends back.
+ */
+export interface MeasureTarget {
+  kind: TargetKind;
+}
+
 /** Memory is physical and swap memory usage. */
 export interface Memory {
   used: number | null;
@@ -162,6 +183,12 @@ export interface Network {
   uploadBytesPerSecond: number | null;
   interface: string | null;
 }
+
+/**
+ * NoProgress is never sent: a Measure has no progress to report. The
+ * channel that would carry it lets the page cancel the Measure.
+ */
+export interface NoProgress {}
 
 /** Power is available on both laptops and desktop Macs. */
 export interface Power {
@@ -252,6 +279,21 @@ export interface Snapshot {
   collector: CollectorState;
 }
 
+/**
+ * SpaceItem is one file or folder shown in Space with its size. Its ID stays
+ * the same for its path, so a later Measure keeps it.
+ */
+export interface SpaceItem {
+  id: string;
+  name: string;
+  path: string;
+  bytes: number;
+  isDir: boolean;
+}
+
+/** TargetKind is what a Measure measures. */
+export type TargetKind = "overview";
+
 /** Thermal contains the sensors Burrow can show without root. */
 export interface Thermal {
   cpuCelsius: number | null;
@@ -287,6 +329,17 @@ export const Clean = {
    */
   scan(updates: Channel<ScanProgress>): Promise<ScanResult> {
     return call("Clean.Scan", updates);
+  },
+} as const;
+
+/** Space is the bound service behind the Space tab. */
+export const Space = {
+  /**
+   * Measure measures target. Space sends nothing through updates; MyGo
+   * cancels ctx when the page closes it, which stops the analyzer.
+   */
+  measure(target: MeasureTarget, updates: Channel<NoProgress>): Promise<MeasureResult> {
+    return call("Space.Measure", target, updates);
   },
 } as const;
 
