@@ -13,10 +13,12 @@ type fakeMeasurer struct {
 	measurement Measurement
 	err         error
 	asked       []MeasureTarget
+	askedAt     time.Time
 }
 
 func (f *fakeMeasurer) Measure(_ context.Context, target MeasureTarget) (Measurement, error) {
 	f.asked = append(f.asked, target)
+	f.askedAt = time.Now()
 	return Measurement{Items: slices.Clone(f.measurement.Items)}, f.err
 }
 
@@ -71,6 +73,8 @@ func TestMeasureOverviewTotalAddsUpTheLocationsOnly(t *testing.T) {
 	}
 }
 
+// measuredAt is when the Measure started: anything that changed the disk
+// while it ran may be missing from it.
 func TestMeasureReportsWhatAndWhenItMeasured(t *testing.T) {
 	measurer := &fakeMeasurer{measurement: overviewMeasurement()}
 	engine := NewEngine(Options{Measurer: measurer})
@@ -86,8 +90,8 @@ func TestMeasureReportsWhatAndWhenItMeasured(t *testing.T) {
 	if !slices.Equal(measurer.asked, []MeasureTarget{{Kind: Overview}}) {
 		t.Errorf("Measurer asked for %#v, want the overview once", measurer.asked)
 	}
-	if result.MeasuredAt.Before(before) || result.MeasuredAt.After(time.Now()) {
-		t.Errorf("measuredAt = %v, want during the Measure", result.MeasuredAt)
+	if result.MeasuredAt.Before(before) || result.MeasuredAt.After(measurer.askedAt) {
+		t.Errorf("measuredAt = %v, want when the Measure started, by %v", result.MeasuredAt, measurer.askedAt)
 	}
 }
 

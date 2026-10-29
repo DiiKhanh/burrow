@@ -237,7 +237,7 @@ export const strings = {
   space: {
     idle: {
       title: "See what takes up your disk.",
-      description: "Space measures your Mac folder by folder. Nothing is removed.",
+      description: "Space measures your Mac, folder by folder.",
       action: "Measure this Mac",
     },
     measuring: {

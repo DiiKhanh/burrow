@@ -42,9 +42,10 @@ type SpaceItem struct {
 	IsDir bool   `json:"isDir"`
 }
 
-// MeasureResult is what one Measure found. Items and Insights are each
-// sorted largest first. Insights lie inside the items, so TotalBytes adds up
-// the items only, never counting the same bytes twice.
+// MeasureResult is what one Measure found, as of MeasuredAt, when it
+// started: a change to the disk while it ran may be missing. Items and
+// Insights are each sorted largest first. Insights lie inside the items, so
+// TotalBytes adds up the items only, never counting the same bytes twice.
 type MeasureResult struct {
 	Target     MeasureTarget `json:"target"`
 	MeasuredAt time.Time     `json:"measuredAt"`
@@ -94,13 +95,14 @@ func (e *Engine) Measure(ctx context.Context, target MeasureTarget) (MeasureResu
 	if target.Kind != Overview {
 		return MeasureResult{}, fmt.Errorf("%w: %q", ErrInvalidTarget, target.Kind)
 	}
+	measuredAt := time.Now()
 	measurement, err := e.measurer.Measure(ctx, target)
 	if err != nil {
 		return MeasureResult{}, err
 	}
 	result := MeasureResult{
 		Target:     target,
-		MeasuredAt: time.Now(),
+		MeasuredAt: measuredAt,
 		Items:      []SpaceItem{},
 		Insights:   []SpaceItem{},
 	}

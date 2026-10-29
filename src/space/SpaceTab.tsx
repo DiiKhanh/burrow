@@ -46,6 +46,7 @@ export function SpaceTab() {
         sessionRef.current = null;
       },
       () => {
+        // A cancelled or superseded run rejects for its cancel: nothing went wrong.
         if (runRef.current !== run) return;
         setError(strings.space.error);
         setPhase("idle");
@@ -86,7 +87,7 @@ export function SpaceTab() {
   );
 }
 
-/** Indeterminate: the analyzer reports nothing until it is done. */
+/** Indeterminate: a Measure reports no progress, only its result. */
 function Measuring({ onCancel }: { onCancel: () => void }) {
   return (
     <section

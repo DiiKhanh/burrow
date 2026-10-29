@@ -29,5 +29,5 @@ export const overview: MeasureResult = {
     item("Homebrew Cache", `${HOME}/Library/Caches/Homebrew`, 181 * MB),
     item("System Logs", `${HOME}/Library/Logs`, 2.1 * MB),
   ],
-  totalBytes: locations.reduce((total, location) => total + location.bytes, 0),
+  totalBytes: 146.03 * GB,
 };

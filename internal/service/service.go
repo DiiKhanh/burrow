@@ -113,13 +113,20 @@ type NoProgress struct{}
 // Measure measures target. Space sends nothing through updates; MyGo
 // cancels ctx when the page closes it, which stops the analyzer.
 func (s *Space) Measure(ctx context.Context, target space.MeasureTarget, updates *mygo.Channel[NoProgress]) (space.MeasureResult, error) {
-	s.mu.RLock()
-	engine := s.engine
-	s.mu.RUnlock()
-	if engine == nil {
-		return space.MeasureResult{}, ErrSpaceUnavailable
+	engine, err := s.currentEngine()
+	if err != nil {
+		return space.MeasureResult{}, err
 	}
 	return engine.Measure(ctx, target)
+}
+
+func (s *Space) currentEngine() (*space.Engine, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.engine == nil {
+		return nil, ErrSpaceUnavailable
+	}
+	return s.engine, nil
 }
 
 // Status is the bound service behind the Status tab: live system health.

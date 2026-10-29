@@ -145,9 +145,10 @@ export interface LockedGroup {
 }
 
 /**
- * MeasureResult is what one Measure found. Items and Insights are each
- * sorted largest first. Insights lie inside the items, so TotalBytes adds up
- * the items only, never counting the same bytes twice.
+ * MeasureResult is what one Measure found, as of MeasuredAt, when it
+ * started: a change to the disk while it ran may be missing. Items and
+ * Insights are each sorted largest first. Insights lie inside the items, so
+ * TotalBytes adds up the items only, never counting the same bytes twice.
  */
 export interface MeasureResult {
   target: MeasureTarget;
