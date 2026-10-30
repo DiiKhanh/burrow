@@ -10,8 +10,13 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"slices"
+	"strings"
+	"sync"
 	"time"
+	"unicode"
+	"unicode/utf8"
 )
 
 // ErrInvalidTarget means a Measure was asked for a target Space does not know.
@@ -24,22 +29,48 @@ const (
 	// Overview is the machine-wide overview: the locations of the Mac and
 	// Mole's Insights.
 	Overview TargetKind = "overview"
+	// Folder is one folder's contents, anywhere on the Mac: Measure only
+	// reads.
+	Folder TargetKind = "folder"
 )
 
 // MeasureTarget says what one Measure measures. Each Space item that opens
-// will carry the target the UI sends back.
+// carries the target the UI sends back. Path is set for a Folder only.
 type MeasureTarget struct {
 	Kind TargetKind `json:"kind"`
+	Path string     `json:"path,omitempty"`
+}
+
+func (t MeasureTarget) valid() bool {
+	switch t.Kind {
+	case Overview:
+		return t.Path == ""
+	case Folder:
+		return CleanAbsolute(t.Path)
+	default:
+		return false
+	}
+}
+
+// CleanAbsolute is true for an absolute path already in its clean form,
+// which rules out `..`, and free of control characters and invalid UTF-8.
+func CleanAbsolute(path string) bool {
+	return filepath.IsAbs(path) &&
+		filepath.Clean(path) == path &&
+		utf8.ValidString(path) &&
+		!strings.ContainsFunc(path, unicode.IsControl)
 }
 
 // SpaceItem is one file or folder shown in Space with its size. Its ID stays
-// the same for its path, so a later Measure keeps it.
+// the same for its path, so a later Measure keeps it. Opens is the target
+// that measures a folder's contents, nil for anything else.
 type SpaceItem struct {
-	ID    string `json:"id"`
-	Name  string `json:"name"`
-	Path  string `json:"path"`
-	Bytes int64  `json:"bytes"`
-	IsDir bool   `json:"isDir"`
+	ID    string         `json:"id"`
+	Name  string         `json:"name"`
+	Path  string         `json:"path"`
+	Bytes int64          `json:"bytes"`
+	IsDir bool           `json:"isDir"`
+	Opens *MeasureTarget `json:"opens"`
 }
 
 // MeasureResult is what one Measure found, as of MeasuredAt, when it
@@ -77,6 +108,12 @@ type Measurer interface {
 // Engine is the deep module callers use for Space.
 type Engine struct {
 	measurer Measurer
+
+	mu sync.Mutex
+	// current holds, per target measured this session, the latest result's
+	// Space items by id (ADR 0004): Measure again replaces its target's
+	// ids, while those of other folders stay. It lives in memory only.
+	current map[MeasureTarget]map[string]string
 }
 
 // Options configures an Engine.
@@ -86,14 +123,14 @@ type Options struct {
 
 // NewEngine constructs an Engine from its adapters.
 func NewEngine(options Options) *Engine {
-	return &Engine{measurer: options.Measurer}
+	return &Engine{measurer: options.Measurer, current: make(map[MeasureTarget]map[string]string)}
 }
 
 // Measure computes the sizes target holds without removing anything. It
 // runs alongside a Scan or Clean.
 func (e *Engine) Measure(ctx context.Context, target MeasureTarget) (MeasureResult, error) {
-	if target.Kind != Overview {
-		return MeasureResult{}, fmt.Errorf("%w: %q", ErrInvalidTarget, target.Kind)
+	if !target.valid() {
+		return MeasureResult{}, fmt.Errorf("%w: %q %q", ErrInvalidTarget, target.Kind, target.Path)
 	}
 	measuredAt := time.Now()
 	measurement, err := e.measurer.Measure(ctx, target)
@@ -114,6 +151,9 @@ func (e *Engine) Measure(ctx context.Context, target MeasureTarget) (MeasureResu
 			Bytes: measured.Bytes,
 			IsDir: measured.IsDir,
 		}
+		if measured.IsDir {
+			item.Opens = &MeasureTarget{Kind: Folder, Path: measured.Path}
+		}
 		if measured.Insight {
 			result.Insights = append(result.Insights, item)
 			continue
@@ -123,7 +163,33 @@ func (e *Engine) Measure(ctx context.Context, target MeasureTarget) (MeasureResu
 	}
 	slices.SortStableFunc(result.Items, largestFirst)
 	slices.SortStableFunc(result.Insights, largestFirst)
+	e.remember(target, result.Items, result.Insights)
 	return result, nil
+}
+
+func (e *Engine) remember(target MeasureTarget, lists ...[]SpaceItem) {
+	paths := make(map[string]string)
+	for _, list := range lists {
+		for _, item := range list {
+			paths[item.ID] = item.Path
+		}
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.current[target] = paths
+}
+
+// measuredPath is the path of the Space item id, if a current result of
+// this session lists it.
+func (e *Engine) measuredPath(id string) (string, bool) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	for _, paths := range e.current {
+		if path, ok := paths[id]; ok {
+			return path, true
+		}
+	}
+	return "", false
 }
 
 func largestFirst(a, b SpaceItem) int {

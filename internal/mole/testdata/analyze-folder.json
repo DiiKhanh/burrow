@@ -1,0 +1,75 @@
+{
+  "scan_status": "complete",
+  "path": "/Users/test/Projects",
+  "overview": false,
+  "entries": [
+    {
+      "scan_status": "complete",
+      "name": "app",
+      "path": "/Users/test/Projects/app",
+      "size": 3002368,
+      "is_dir": true
+    },
+    {
+      "scan_status": "complete",
+      "name": "Ảnh chụp",
+      "path": "/Users/test/Projects/Ảnh chụp",
+      "size": 1500000,
+      "is_dir": true
+    },
+    {
+      "scan_status": "complete",
+      "name": "real",
+      "path": "/Users/test/Projects/real",
+      "size": 500000,
+      "is_dir": true
+    },
+    {
+      "scan_status": "complete",
+      "name": "quote\"and'apostrophe.txt",
+      "path": "/Users/test/Projects/quote\"and'apostrophe.txt",
+      "size": 12000,
+      "is_dir": false,
+      "last_access": "2026-10-30T03:33:52Z"
+    },
+    {
+      "scan_status": "complete",
+      "name": "Drafts →",
+      "path": "/Users/test/Projects/Drafts →",
+      "size": 9000,
+      "is_dir": true
+    },
+    {
+      "scan_status": "complete",
+      "name": "emoji 📦",
+      "path": "/Users/test/Projects/emoji 📦",
+      "size": 700,
+      "is_dir": true
+    },
+    {
+      "scan_status": "complete",
+      "name": "data link →",
+      "path": "/Users/test/Projects/data link",
+      "size": 0,
+      "is_dir": false,
+      "last_access": "2026-10-30T03:33:52Z"
+    },
+    {
+      "scan_status": "complete",
+      "name": "shortcut →",
+      "path": "/Users/test/Projects/shortcut",
+      "size": 0,
+      "is_dir": true,
+      "last_access": "2026-10-30T03:33:52Z"
+    }
+  ],
+  "large_files": [
+    {
+      "name": "IMG 0001.heic",
+      "path": "/Users/test/Projects/Ảnh chụp/IMG 0001.heic",
+      "size": 1500000
+    }
+  ],
+  "total_size": 5024068,
+  "total_files": 5
+}

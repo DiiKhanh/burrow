@@ -249,14 +249,29 @@ export const strings = {
       cancel: "Cancel",
     },
     error: "Measure could not finish. Try again.",
+    trail: {
+      label: "Folders",
+      root: "This Mac",
+      separator: "/",
+    },
+    measureAgain: "Measure again",
+    /** A row's button, which measures the folder it shows. */
+    open: (name: string) => `Open ${name}`,
+    chevron: "›",
+    folder: {
+      /** The unit after the big number: "GB in this folder". */
+      total: (unit: string) => `${unit} in this folder`,
+      contents: "Contents",
+      empty: "This folder is empty.",
+    },
     overview: {
       /** The unit after the big number: "GB measured on this Mac". */
       total: (unit: string) => `${unit} measured on this Mac`,
       insights: "Insights",
       insightsHint: "Places that quietly grow",
       locations: "Locations",
-      count: (count: number) => plural(count, "item", "items"),
     },
+    count: (count: number) => plural(count, "item", "items"),
   },
   /** Shown in place of a value that could not be read. */
   unavailable: "-",

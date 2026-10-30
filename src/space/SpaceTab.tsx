@@ -1,94 +1,108 @@
-import { Channel } from "mygo-runtime";
-import { useEffect, useRef, useState } from "react";
-import { type MeasureResult, type MeasureTarget, type NoProgress, Space } from "../mygo";
+import { useEffect, useRef } from "react";
+import type { MeasureTarget } from "../mygo";
 import { useTabActive } from "../shell/activeTab";
 import { PillButton } from "../shell/PillButton";
 import { strings } from "../strings";
+import { Folder } from "./Folder";
 import { Overview } from "./Overview";
-
-type MeasureSession = { result: Promise<MeasureResult>; cancel: () => void };
-
-/** Starts a Measure; cancel closes its channel, which stops it in Go. */
-function startMeasure(target: MeasureTarget): MeasureSession {
-  const updates = new Channel<NoProgress>();
-  return { result: Space.measure(target, updates), cancel: () => updates.close() };
-}
-
-const OVERVIEW: MeasureTarget = { kind: "overview" };
-
-type Phase = "idle" | "measuring" | "done";
+import { lastCrumb, type Measures, type Trail, useMeasures } from "./useMeasures";
 
 /**
  * The Space tab: the overview of the whole Mac, measured the first time the
- * tab opens. The result stays while other tabs show, since every tab stays
- * mounted.
+ * tab opens, and every folder opened from it. Results stay while other tabs
+ * show, since every tab stays mounted.
  */
 export function SpaceTab() {
   const active = useTabActive();
-  const [phase, setPhase] = useState<Phase>("idle");
-  const [result, setResult] = useState<MeasureResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const sessionRef = useRef<MeasureSession | null>(null);
-  const runRef = useRef(0);
+  const measures = useMeasures();
   const openedRef = useRef(false);
-
-  const begin = () => {
-    const run = ++runRef.current;
-    setPhase("measuring");
-    setError(null);
-    const session = startMeasure(OVERVIEW);
-    sessionRef.current = session;
-    void session.result.then(
-      (next) => {
-        if (runRef.current !== run) return;
-        setResult(next);
-        setPhase("done");
-        sessionRef.current = null;
-      },
-      () => {
-        // A cancelled or superseded run rejects for its cancel: nothing went wrong.
-        if (runRef.current !== run) return;
-        setError(strings.space.error);
-        setPhase("idle");
-        sessionRef.current = null;
-      },
-    );
-  };
-
-  const cancel = () => {
-    runRef.current++;
-    sessionRef.current?.cancel();
-    sessionRef.current = null;
-    setPhase("idle");
-  };
+  const { trail, result, measuring, error } = measures;
+  const { target } = lastCrumb(trail);
 
   // Space measures nothing in the background: only once the user opens it.
   useEffect(() => {
     if (!active || openedRef.current) return;
     openedRef.current = true;
-    begin();
+    measures.measureAgain();
   }, [active]);
 
+  // Before the overview's first result, the tab has nowhere to go back to.
+  const started = trail.length > 1 || result !== null;
   return (
     <main className="flex min-h-0 flex-1 flex-col overflow-y-auto">
       <div className="mx-auto flex w-full max-w-clean flex-1 flex-col gap-6 px-6 pt-8 pb-16">
-        {phase === "idle" && (
+        {!started && !measuring && (
           <section className="flex flex-1 flex-col items-center justify-center gap-5 text-center">
             <h1 className="font-bold text-title">{strings.space.idle.title}</h1>
             <p className="text-ink-muted text-note">{strings.space.idle.description}</p>
             {error && <p className="text-body text-danger">{error}</p>}
-            <PillButton onClick={begin}>{strings.space.idle.action}</PillButton>
+            <PillButton onClick={measures.measureAgain}>{strings.space.idle.action}</PillButton>
           </section>
         )}
-        {phase === "measuring" && <Measuring onCancel={cancel} />}
-        {phase === "done" && result && <Overview result={result} />}
+        {started && <Header measures={measures} />}
+        {started && error && <p className="text-body text-danger">{error}</p>}
+        {measuring && <Measuring target={target} onCancel={measures.cancel} />}
+        {!measuring &&
+          result &&
+          (target.kind === "overview" ? (
+            <Overview result={result} onOpen={measures.open} />
+          ) : (
+            <Folder result={result} onOpen={measures.open} />
+          ))}
       </div>
     </main>
   );
 }
 
+/** The trail back up, and Measure again for the folder on screen. */
+function Header({ measures }: { measures: Measures }) {
+  return (
+    <div className="flex items-start justify-between gap-4">
+      <Breadcrumb trail={measures.trail} onGoTo={measures.goTo} />
+      {!measures.measuring && (
+        <button
+          type="button"
+          onClick={measures.measureAgain}
+          className="shrink-0 text-caption text-ink-muted hover:text-ink"
+        >
+          {strings.space.measureAgain}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function Breadcrumb({ trail, onGoTo }: { trail: Trail; onGoTo: (index: number) => void }) {
+  const last = trail.length - 1;
+  return (
+    <nav aria-label={strings.space.trail.label} className="min-w-0">
+      <ol className="flex flex-wrap items-center gap-x-1.5 gap-y-1 font-mono text-caption text-ink-muted">
+        {trail.map((crumb, index) => (
+          // Each crumb lies inside the one before, so no target repeats.
+          <li key={JSON.stringify(crumb.target)} className="flex min-w-0 items-center gap-1.5">
+            {index > 0 && (
+              <span aria-hidden="true" className="text-ink-faint">
+                {strings.space.trail.separator}
+              </span>
+            )}
+            <button
+              type="button"
+              aria-current={index === last ? "page" : undefined}
+              onClick={() => onGoTo(index)}
+              className={`max-w-60 truncate ${index === last ? "text-ink" : "hover:text-ink"}`}
+            >
+              {crumb.name}
+            </button>
+          </li>
+        ))}
+      </ol>
+    </nav>
+  );
+}
+
 /** Indeterminate: a Measure reports no progress, only its result. */
-function Measuring({ onCancel }: { onCancel: () => void }) {
+function Measuring({ target, onCancel }: { target: MeasureTarget; onCancel: () => void }) {
+  const overview = target.kind === "overview";
   return (
     <section
       aria-label={strings.space.measuring.label}
@@ -96,9 +110,11 @@ function Measuring({ onCancel }: { onCancel: () => void }) {
       className="flex flex-1 flex-col items-center justify-center gap-4 text-center"
     >
       <p className="font-bold text-title">{strings.space.measuring.title}</p>
-      <p className="font-mono text-caption text-ink-muted">{strings.space.measuring.overview}</p>
+      <p className="max-w-full break-all font-mono text-caption text-ink-muted">
+        {overview ? strings.space.measuring.overview : target.path}
+      </p>
       <progress aria-label={strings.space.measuring.title} className="scan-layer-progress h-1.5 w-72 rounded-full" />
-      <p className="text-caption text-ink-faint">{strings.space.measuring.hint}</p>
+      {overview && <p className="text-caption text-ink-faint">{strings.space.measuring.hint}</p>}
       <button type="button" onClick={onCancel} className="text-button text-size hover:underline">
         {strings.space.measuring.cancel}
       </button>
