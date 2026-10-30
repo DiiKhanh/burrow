@@ -1,21 +1,21 @@
-package cleantest_test
+package removaltest_test
 
 import (
 	"os"
 	"path/filepath"
 	"testing"
 
-	"github.com/DiiKhanh/burrow/internal/clean"
-	"github.com/DiiKhanh/burrow/internal/clean/cleantest"
+	"github.com/DiiKhanh/burrow/internal/removal"
+	"github.com/DiiKhanh/burrow/internal/removal/removaltest"
 )
 
 func TestRemoversPanicOutsideTheTempDir(t *testing.T) {
 	// Never created or touched: the removers must panic before any syscall.
 	outside := "/Users/burrow-test-nobody/Documents"
 	trash := func(string) error { t.Fatal("OSRemover asked macOS to trash a path outside the temp dir"); return nil }
-	for name, remover := range map[string]clean.Remover{
-		"FakeRemover": &cleantest.FakeRemover{TrashDir: t.TempDir()},
-		"OSRemover":   clean.OSRemover{Trash: trash},
+	for name, remover := range map[string]removal.Remover{
+		"FakeRemover": &removaltest.FakeRemover{TrashDir: t.TempDir()},
+		"OSRemover":   removal.OSRemover{Trash: trash},
 	} {
 		for method, remove := range map[string]func(string) error{
 			"Delete":      remover.Delete,
@@ -38,7 +38,7 @@ func TestFakeRemoverDeletesInsideTheTempDir(t *testing.T) {
 	if err := os.WriteFile(path, []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	remover := &cleantest.FakeRemover{}
+	remover := &removaltest.FakeRemover{}
 
 	if err := remover.Delete(path); err != nil {
 		t.Fatal(err)
@@ -62,7 +62,7 @@ func TestFakeRemoverMovesToItsTrashDir(t *testing.T) {
 		}
 	}
 	trash := filepath.Join(temp, ".Trash")
-	remover := &cleantest.FakeRemover{TrashDir: trash}
+	remover := &removaltest.FakeRemover{TrashDir: trash}
 
 	for _, path := range []string{first, second} {
 		if err := remover.MoveToTrash(path); err != nil {

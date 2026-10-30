@@ -2,19 +2,19 @@ package clean
 
 import (
 	"context"
-	"fmt"
-	"path/filepath"
 	"time"
+
+	"github.com/DiiKhanh/burrow/internal/removal"
 )
 
 // SkipReason is why Clean left a selected junk item in place.
-type SkipReason string
+type SkipReason = removal.SkipReason
 
 const (
-	InUse            SkipReason = "in_use"
-	PermissionDenied SkipReason = "permission_denied"
-	Protected        SkipReason = "protected"
-	AlreadyGone      SkipReason = "already_gone"
+	InUse            = removal.InUse
+	PermissionDenied = removal.PermissionDenied
+	Protected        = removal.Protected
+	AlreadyGone      = removal.AlreadyGone
 )
 
 // CleanedItem is what Clean did with one selected junk item: removed with
@@ -59,28 +59,28 @@ func (e *Engine) Clean(ctx context.Context, selection []string, onProgress func(
 		return CleanReport{}, ErrBusy
 	}
 	defer e.busy.Unlock()
-	realHome, err := filepath.EvalSymlinks(e.home)
+	guard, err := removal.NewGuard(e.home)
 	if err != nil {
-		return CleanReport{}, fmt.Errorf("clean: resolving Home: %w", err)
+		return CleanReport{}, err
 	}
 	unknown, groups := e.plan(selection)
 	started := time.Now()
-	report, err := e.run(ctx, realHome, unknown, groups, onProgress)
+	report, err := e.run(ctx, guard, unknown, groups, onProgress)
 	// A stopped run is logged too: it may have removed items already.
-	if historyErr := appendHistory(e.home, started, report); historyErr != nil {
+	if historyErr := removal.AppendHistory(e.home, started, historyItems(report)); historyErr != nil {
 		e.logger.Error("could not log Clean history", "error", historyErr)
 	}
 	return report, err
 }
 
 // run skips the unknown ids, then cleans each group in turn.
-func (e *Engine) run(ctx context.Context, realHome string, unknown []string, groups []JunkGroup, onProgress func(CleanProgress) error) (CleanReport, error) {
+func (e *Engine) run(ctx context.Context, guard *removal.Guard, unknown []string, groups []JunkGroup, onProgress func(CleanProgress) error) (CleanReport, error) {
 	report := CleanReport{Items: make([]CleanedItem, 0, len(unknown))}
 	for _, id := range unknown {
 		report.Items = append(report.Items, CleanedItem{ID: id, SkipReason: ptr(Protected)})
 	}
 	for _, group := range groups {
-		if err := e.cleanGroup(ctx, realHome, group, &report, onProgress); err != nil {
+		if err := e.cleanGroup(ctx, guard, group, &report, onProgress); err != nil {
 			return report, err
 		}
 	}
@@ -89,7 +89,7 @@ func (e *Engine) run(ctx context.Context, realHome string, unknown []string, gro
 
 // cleanGroup removes the selected items of one group into report, sending
 // progress before the first item and after each one.
-func (e *Engine) cleanGroup(ctx context.Context, realHome string, group JunkGroup, report *CleanReport, onProgress func(CleanProgress) error) error {
+func (e *Engine) cleanGroup(ctx context.Context, guard *removal.Guard, group JunkGroup, report *CleanReport, onProgress func(CleanProgress) error) error {
 	progress := CleanProgress{GroupID: group.ID, Selected: len(group.Items), FreedBytes: report.FreedBytes, TrashedBytes: report.TrashedBytes}
 	if err := sendCleanProgress(onProgress, progress); err != nil {
 		return err
@@ -98,7 +98,7 @@ func (e *Engine) cleanGroup(ctx context.Context, realHome string, group JunkGrou
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		cleaned := e.remove(realHome, group, item)
+		cleaned := e.remove(guard, group, item)
 		report.Items = append(report.Items, cleaned)
 		switch {
 		case cleaned.SkipReason != nil:
@@ -156,13 +156,13 @@ func (e *Engine) plan(selection []string) (unknown []string, groups []JunkGroup)
 
 // remove checks item of group and removes it with the group's method. An
 // item of a group locked right now is in use.
-func (e *Engine) remove(realHome string, group JunkGroup, item JunkItem) CleanedItem {
+func (e *Engine) remove(guard *removal.Guard, group JunkGroup, item JunkItem) CleanedItem {
 	cleaned := CleanedItem{ID: item.ID, Path: item.Path, Bytes: item.Bytes, Method: ptr(group.RemovalMethod)}
 	if e.isLocked(group.ID) {
 		cleaned.SkipReason = ptr(InUse)
 		return cleaned
 	}
-	if reason, ok := e.guard(realHome, item.Path); !ok {
+	if reason, ok := guard.Check(item.Path); !ok {
 		cleaned.SkipReason = ptr(reason)
 		return cleaned
 	}
@@ -172,9 +172,26 @@ func (e *Engine) remove(realHome string, group JunkGroup, item JunkItem) Cleaned
 	}
 	if err := removeWith(item.Path); err != nil {
 		e.logger.Warn("could not remove junk item", "path", item.Path, "error", err)
-		cleaned.SkipReason = ptr(removalFailure(err))
+		cleaned.SkipReason = ptr(removal.FailureReason(err))
 	}
 	return cleaned
+}
+
+// historyItems is report as the history file logs it.
+func historyItems(report CleanReport) []removal.HistoryItem {
+	items := make([]removal.HistoryItem, 0, len(report.Items))
+	for _, item := range report.Items {
+		logged := removal.HistoryItem{ID: item.ID, Path: item.Path, Bytes: item.Bytes, Outcome: removal.Removed}
+		if item.Method != nil {
+			logged.Method = *item.Method
+		}
+		if item.SkipReason != nil {
+			logged.Outcome = removal.Skipped
+			logged.Reason = *item.SkipReason
+		}
+		items = append(items, logged)
+	}
+	return items
 }
 
 func ptr[T any](v T) *T { return &v }

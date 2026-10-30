@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DiiKhanh/burrow/internal/clean"
+	"github.com/DiiKhanh/burrow/internal/removal"
 	"github.com/egoist/mygo"
 )
 
@@ -33,7 +33,7 @@ func TestOSRemoverMovesToTheMacOSTrash(t *testing.T) {
 	if err := os.WriteFile(path, []byte("Put Back me"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	remover := clean.OSRemover{Trash: mygo.Shell.TrashItem}
+	remover := removal.OSRemover{Trash: mygo.Shell.TrashItem}
 
 	if err := remover.MoveToTrash(path); err != nil {
 		t.Fatalf("MoveToTrash(%s): %v", path, err)

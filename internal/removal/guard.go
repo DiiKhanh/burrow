@@ -1,7 +1,8 @@
-package clean
+package removal
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -11,7 +12,7 @@ import (
 	"unicode/utf8"
 )
 
-// protectedPaths are Home-relative folders Clean never removes, nor anything
+// protectedPaths are Home-relative folders Burrow never removes, nor anything
 // inside or above them. Mole's own critical-deletion roots all lie outside
 // Home or are Home itself, which the guard already refuses.
 var protectedPaths = []string{
@@ -33,21 +34,47 @@ var protectedPaths = []string{
 	".gnupg",
 }
 
-// guard re-checks a junk item right before removal. It returns false with the
-// reason when the item must be skipped. realHome is Home with every symlink
-// resolved.
-func (e *Engine) guard(realHome, path string) (SkipReason, bool) {
+// Guard re-checks an item right before removal: the path must be absolute,
+// free of `..` and control characters, strictly below Home both as given and
+// with every symlink resolved, clear of the protected paths, and still there.
+type Guard struct {
+	home string
+	// realHome is home with every symlink resolved.
+	realHome string
+	rules    []Rule
+}
+
+// Rule is a check a caller adds to its Guard on top of the shared ones. It
+// reports whether rel may be removed. rel is the path relative to Home,
+// slash-separated, and never "." or above Home; the Guard asks once for the
+// path as given and once with every symlink resolved. APFS ignores case, so
+// a rule that compares names should too.
+type Rule func(rel string) bool
+
+// NewGuard returns a Guard for home that also applies rules. It resolves
+// Home's symlinks now, so build one per run.
+func NewGuard(home string, rules ...Rule) (*Guard, error) {
+	home = filepath.Clean(home)
+	realHome, err := filepath.EvalSymlinks(home)
+	if err != nil {
+		return nil, fmt.Errorf("removal: resolving Home: %w", err)
+	}
+	return &Guard{home: home, realHome: realHome, rules: rules}, nil
+}
+
+// Check returns false with the reason when path must be skipped.
+func (g *Guard) Check(path string) (SkipReason, bool) {
 	if !filepath.IsAbs(path) || hasDotDot(path) || hasControl(path) {
 		return Protected, false
 	}
-	if !safeUnder(e.home, path) {
+	if !g.allows(g.home, path) {
 		return Protected, false
 	}
 	resolved, err := filepath.EvalSymlinks(path)
 	if err != nil {
 		return checkFailure(err), false
 	}
-	if !safeUnder(realHome, resolved) {
+	if !g.allows(g.realHome, resolved) {
 		return Protected, false
 	}
 	if _, err := os.Lstat(path); err != nil {
@@ -72,21 +99,36 @@ func hasControl(path string) bool {
 	return strings.ContainsFunc(path, unicode.IsControl)
 }
 
-// safeUnder reports whether path lies strictly below home and clear of every
-// protected path. APFS ignores case, so the comparison does too.
-func safeUnder(home, path string) bool {
+// allows reports whether path lies strictly below home, clear of every
+// protected path, and passes every rule.
+func (g *Guard) allows(home, path string) bool {
 	rel, err := filepath.Rel(home, path)
 	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, "../") {
 		return false
 	}
-	rel = strings.ToLower(filepath.ToSlash(rel))
-	for _, protected := range protectedPaths {
-		protected = strings.ToLower(protected)
-		if rel == protected || strings.HasPrefix(rel, protected+"/") || strings.HasPrefix(protected, rel+"/") {
+	rel = filepath.ToSlash(rel)
+	if isProtected(rel) {
+		return false
+	}
+	for _, rule := range g.rules {
+		if !rule(rel) {
 			return false
 		}
 	}
 	return true
+}
+
+// isProtected reports whether rel is a protected path, or lies inside or
+// above one. APFS ignores case, so the comparison does too.
+func isProtected(rel string) bool {
+	rel = strings.ToLower(rel)
+	for _, protected := range protectedPaths {
+		protected = strings.ToLower(protected)
+		if rel == protected || strings.HasPrefix(rel, protected+"/") || strings.HasPrefix(protected, rel+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 // checkFailure maps an error met while checking a path. A path Burrow cannot
@@ -102,9 +144,9 @@ func checkFailure(err error) SkipReason {
 	}
 }
 
-// removalFailure maps an error from the Remover. Whatever else stops a
+// FailureReason maps an error from a Remover. Whatever else stops a
 // removal, the system refused it, so it reads as permission denied.
-func removalFailure(err error) SkipReason {
+func FailureReason(err error) SkipReason {
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
 		return AlreadyGone

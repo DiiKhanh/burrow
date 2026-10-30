@@ -1,4 +1,4 @@
-package clean
+package removal
 
 import (
 	"errors"
@@ -9,8 +9,8 @@ import (
 	"testing"
 )
 
-// Remover removes one junk item from disk once the engine's guard passed it,
-// with the RemovalMethod of its junk group.
+// Remover removes one item from disk once the Guard passed it, with one of
+// the two RemovalMethods.
 type Remover interface {
 	// Delete removes path and everything under it, for good.
 	Delete(path string) error
@@ -19,11 +19,11 @@ type Remover interface {
 }
 
 // errNoTrash means an OSRemover was built without a Trash function.
-var errNoTrash = errors.New("clean: no way to move to Trash")
+var errNoTrash = errors.New("removal: no way to move to Trash")
 
-// OSRemover removes junk items for real. Trash moves one path into the
-// macOS Trash: the app passes mygo.Shell.TrashItem, which keeps MyGo out of
-// the engine.
+// OSRemover removes items for real. Trash moves one path into the macOS
+// Trash: the app passes mygo.Shell.TrashItem, which keeps MyGo out of the
+// engines.
 type OSRemover struct {
 	Trash func(path string) error
 }
@@ -41,7 +41,7 @@ func (r OSRemover) MoveToTrash(path string) error {
 		return errNoTrash
 	}
 	if err := r.Trash(path); err != nil {
-		return fmt.Errorf("clean: moving %s to Trash: %w", path, err)
+		return fmt.Errorf("removal: moving %s to Trash: %w", path, err)
 	}
 	return nil
 }
@@ -55,7 +55,7 @@ func RequireTempDirInTests(path string) {
 	}
 	temp, err := filepath.EvalSymlinks(os.TempDir())
 	if err != nil {
-		panic(fmt.Sprintf("clean: resolving the OS temp dir: %v", err))
+		panic(fmt.Sprintf("removal: resolving the OS temp dir: %v", err))
 	}
 	resolved, err := filepath.EvalSymlinks(filepath.Dir(path))
 	if err != nil {
@@ -64,6 +64,6 @@ func RequireTempDirInTests(path string) {
 	}
 	rel, err := filepath.Rel(temp, resolved)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		panic(fmt.Sprintf("clean: a test tried to remove %s, outside the OS temp dir %s", path, temp))
+		panic(fmt.Sprintf("removal: a test tried to remove %s, outside the OS temp dir %s", path, temp))
 	}
 }
