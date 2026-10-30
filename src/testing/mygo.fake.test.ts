@@ -2,7 +2,7 @@
 // generated client: the real one rejects outside MyGo.
 import { Channel } from "mygo-runtime";
 import { describe, expect, it } from "vitest";
-import { Clean, type ScanProgress, Status } from "../mygo";
+import { Clean, type CleanProgress, type ScanProgress, Status } from "../mygo";
 import { fakeGo } from "./mygo.fake";
 
 describe("the MyGo client under test", () => {
@@ -29,6 +29,14 @@ describe("the MyGo client under test", () => {
 
     fakeGo.scan.last.reject(new Error("context canceled"));
     await expect(result).rejects.toThrow("context canceled");
+  });
+
+  it("marks a Clean cancelled when its channel closes", () => {
+    const updates = new Channel<CleanProgress>();
+    void Clean.clean(["id"], updates);
+
+    updates.close();
+    expect(fakeGo.clean.last.cancelled).toBe(true);
   });
 
   it("names the method a test expected to be called", () => {

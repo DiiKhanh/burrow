@@ -15,12 +15,14 @@ describe("App tabs", () => {
     renderApp();
     expect(screen.getByRole("tab", { name: "Clean" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("tab", { name: "Status" })).toHaveAttribute("aria-selected", "false");
+    expect(screen.getByRole("tab", { name: "Space" })).toHaveAttribute("aria-selected", "false");
     expect(screen.getByRole("tabpanel", { name: "Clean" })).toBeVisible();
-    // Status stays mounted to hold its snapshot, but only one panel shows.
+    // Status and Space stay mounted to hold their results, but only one panel shows.
     const panels = screen.getAllByRole("tabpanel", { hidden: true });
-    expect(panels).toHaveLength(2);
+    expect(panels).toHaveLength(3);
     expect(panels.filter((panel) => !panel.hidden)).toEqual([screen.getByRole("tabpanel", { name: "Clean" })]);
     expect(panels[1]).not.toBeVisible();
+    expect(panels[2]).not.toBeVisible();
   });
 
   it("switches tabs on click", async () => {
@@ -40,6 +42,13 @@ describe("App tabs", () => {
 
     await user.keyboard("{Meta>}1{/Meta}");
     expect(screen.getByRole("tab", { name: "Clean" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("opens Space with ⌘3", async () => {
+    const user = renderApp();
+    await user.keyboard("{Meta>}3{/Meta}");
+    expect(screen.getByRole("tab", { name: "Space" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tabpanel", { name: "Space" })).toBeVisible();
   });
 
   it("ignores 1 and 2 without ⌘ or with other modifiers", async () => {

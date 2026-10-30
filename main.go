@@ -15,6 +15,7 @@ import (
 	"github.com/DiiKhanh/burrow/internal/mole"
 	"github.com/DiiKhanh/burrow/internal/removal"
 	"github.com/DiiKhanh/burrow/internal/service"
+	"github.com/DiiKhanh/burrow/internal/space"
 	"github.com/egoist/mygo"
 )
 
@@ -24,7 +25,8 @@ const windowBackground = "#1b1f31"
 
 func main() {
 	cleanService, configureClean := service.NewClean()
-	mygo.Bind(cleanService, service.NewPrivacy(mygo.Shell.OpenExternal), &service.Status{})
+	spaceService, configureSpace := service.NewSpace()
+	mygo.Bind(cleanService, spaceService, service.NewPrivacy(mygo.Shell.OpenExternal), &service.Status{})
 	mygo.Theme.SetSource(mygo.ThemeDark)
 
 	mygo.App.WhenReady(func() {
@@ -43,6 +45,9 @@ func main() {
 			Remover:   removal.OSRemover{Trash: mygo.Shell.TrashItem},
 			Processes: removal.OSProcesses{},
 			Logger:    slog.Default(),
+		}))
+		configureSpace(space.NewEngine(space.Options{
+			Measurer: mole.NewMeasurer(bundle, home, slog.Default()),
 		}))
 		win := mygo.NewWindow(mygo.WindowOptions{
 			Title:           "Burrow",

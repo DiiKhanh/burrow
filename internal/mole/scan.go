@@ -40,19 +40,7 @@ func NewScanner(bundle Bundle, home string, logger *slog.Logger) *Scanner {
 // Scan runs `mo clean --dry-run`, streams mapped progress, then parses the
 // clean-list written beneath the injected Home.
 func (s *Scanner) Scan(ctx context.Context, onProgress func(clean.ScanProgress) error) (clean.ScanResult, error) {
-	cmd := exec.CommandContext(ctx, s.bundle.Mo(), "clean", "--dry-run")
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	cmd.Cancel = func() error {
-		if cmd.Process == nil {
-			return os.ErrProcessDone
-		}
-		err := syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-		if err == syscall.ESRCH {
-			return os.ErrProcessDone
-		}
-		return err
-	}
-	cmd.WaitDelay = 2 * time.Second
+	cmd := groupCommand(ctx, s.bundle.Mo(), "clean", "--dry-run")
 	shimDir, err := sudoDenyingDir()
 	if err != nil {
 		return clean.ScanResult{}, err
@@ -62,7 +50,7 @@ func (s *Scanner) Scan(ctx context.Context, onProgress func(clean.ScanProgress) 
 			s.logger.Warn("could not remove sudo shim", "path", shimDir, "error", err)
 		}
 	}()
-	cmd.Env = scanEnvironment(os.Environ(), s.home, shimDir)
+	cmd.Env = moleEnvironment(os.Environ(), s.home, shimDir+":"+systemPath)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return clean.ScanResult{}, fmt.Errorf("reading Mole output: %w", err)
@@ -116,6 +104,26 @@ func (s *Scanner) Scan(ctx context.Context, onProgress func(clean.ScanProgress) 
 		return clean.ScanResult{}, fmt.Errorf("closing Mole clean-list: %w", err)
 	}
 	return result, nil
+}
+
+// groupCommand runs a bundled program in a process group of its own, which
+// ctx ending kills whole: Mole's programs start children of their own (du,
+// find) that would otherwise outlive it.
+func groupCommand(ctx context.Context, path string, args ...string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, path, args...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error {
+		if cmd.Process == nil {
+			return os.ErrProcessDone
+		}
+		err := syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		if err == syscall.ESRCH {
+			return os.ErrProcessDone
+		}
+		return err
+	}
+	cmd.WaitDelay = 2 * time.Second
+	return cmd
 }
 
 func stopCommand(cmd *exec.Cmd) {
@@ -176,12 +184,19 @@ func sudoDenyingDir() (string, error) {
 	return dir, nil
 }
 
-func scanEnvironment(environ []string, home, shimDir string) []string {
+// systemPath reaches the system's tools only, never an `mo` or other
+// program the user installed.
+const systemPath = "/usr/bin:/bin:/usr/sbin:/sbin"
+
+// moleEnvironment is all a bundled program sees of the environment: the
+// injected Home, path, and the TMPDIR of environ. Nothing else the user
+// set, such as Mole's own MO_* settings, reaches it.
+func moleEnvironment(environ []string, home, path string) []string {
 	values := map[string]string{
 		"HOME":   home,
 		"LC_ALL": "C",
 		"LANG":   "C",
-		"PATH":   shimDir + ":/usr/bin:/bin:/usr/sbin:/sbin",
+		"PATH":   path,
 		"TERM":   "dumb",
 	}
 	for _, entry := range environ {
