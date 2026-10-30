@@ -48,6 +48,8 @@ func main() {
 		}))
 		configureSpace(space.NewEngine(space.Options{
 			Measurer: mole.NewMeasurer(bundle, home, slog.Default()),
+			Home:     home,
+			Reveal:   mygo.Shell.ShowItemInFolder,
 		}))
 		win := mygo.NewWindow(mygo.WindowOptions{
 			Title:           "Burrow",

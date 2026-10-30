@@ -151,6 +151,7 @@ export function installAutopilot(go: FakeGo, search: string) {
   go.clean.onCall((call) => void runClean(call, scanFor(scan), scenarios.get("clean"), browsers));
   go.locked.onCall((call) => call.resolve(lockedBy(browsers)));
   go.measure.onCall((call) => void runMeasure(call, scenarios.get("measure")));
+  go.reveal.onCall((call) => call.resolve());
   go.privacy.onCall((call) => {
     const settings = scenarios.get("settings");
     if (settings === "refused") call.reject(new Error("System Settings did not open"));

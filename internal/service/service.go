@@ -120,6 +120,19 @@ func (s *Space) Measure(ctx context.Context, target space.MeasureTarget, updates
 	return engine.Measure(ctx, target)
 }
 
+// Reveal shows the Space item id in Finder. Go logs why when it cannot,
+// so the page may drop the rejection.
+func (s *Space) Reveal(id string) error {
+	engine, err := s.currentEngine()
+	if err == nil {
+		err = engine.Reveal(id)
+	}
+	if err != nil {
+		log.Printf("service: revealing Space item %s: %v", id, err)
+	}
+	return err
+}
+
 func (s *Space) currentEngine() (*space.Engine, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

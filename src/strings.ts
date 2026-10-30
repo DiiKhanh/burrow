@@ -1,6 +1,6 @@
 // Every string the user sees. Components never hardcode text: they read it
 // here, and strings with numbers or plurals are functions.
-import type { BatteryState, HealthLevel, HealthReason, MemoryPressure, SkipReason } from "./mygo";
+import type { BatteryState, HealthLevel, HealthReason, MemoryPressure, SkipReason, Tag } from "./mygo";
 
 const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
 
@@ -258,11 +258,23 @@ export const strings = {
     /** A row's button, which measures the folder it shows. */
     open: (name: string) => `Open ${name}`,
     chevron: "›",
+    tags: {
+      insight: "Insight",
+      regenerable: "Regenerable",
+      "clean-handles": "Clean handles this",
+    } satisfies Record<Tag, string>,
+    /** The tooltip of the "Clean handles this" tag, which opens the Clean tab. */
+    openClean: "Remove it with Clean",
+    reveal: "Reveal",
+    /** The Reveal button's name: "Reveal Movies in Finder". */
+    revealIn: (name: string) => `Reveal ${name} in Finder`,
     folder: {
       /** The unit after the big number: "GB in this folder". */
       total: (unit: string) => `${unit} in this folder`,
       contents: "Contents",
       empty: "This folder is empty.",
+      largestFiles: (name: string) => `Largest files in ${name}`,
+      largestFilesHint: "Anywhere in this folder",
     },
     overview: {
       /** The unit after the big number: "GB measured on this Mac". */

@@ -1,6 +1,6 @@
 import * as Tabs from "@radix-ui/react-tabs";
 import { type ReactNode, useEffect, useState } from "react";
-import { TabActive } from "./activeTab";
+import { SelectTab, TabActive } from "./activeTab";
 import { PillTabs } from "./PillTabs";
 import { isTab, TABS, type Tab, tabForShortcut } from "./tabs";
 
@@ -41,18 +41,20 @@ export function Window({ panels }: Props) {
       <header className="drag-region flex justify-center pt-12">
         <PillTabs />
       </header>
-      {/* Every tab stays mounted, only hidden: Status keeps the latest snapshot, Clean its run and Space its Measure. */}
-      {TABS.map((value) => (
-        <Tabs.Content
-          key={value}
-          value={value}
-          forceMount
-          hidden={value !== tab}
-          className="tab-panel flex min-h-0 flex-1 flex-col focus:outline-none"
-        >
-          <TabActive.Provider value={value === tab}>{panels[value]}</TabActive.Provider>
-        </Tabs.Content>
-      ))}
+      <SelectTab.Provider value={setTab}>
+        {/* Every tab stays mounted, only hidden: Status keeps the latest snapshot, Clean its run and Space its Measure. */}
+        {TABS.map((value) => (
+          <Tabs.Content
+            key={value}
+            value={value}
+            forceMount
+            hidden={value !== tab}
+            className="tab-panel flex min-h-0 flex-1 flex-col focus:outline-none"
+          >
+            <TabActive.Provider value={value === tab}>{panels[value]}</TabActive.Provider>
+          </Tabs.Content>
+        ))}
+      </SelectTab.Provider>
     </Tabs.Root>
   );
 }

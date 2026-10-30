@@ -21,12 +21,12 @@ test("shows the overview: the locations' total, Insights above Locations", async
   const insights = page.getByRole("region", { name: "Insights" });
   const locations = page.getByRole("region", { name: "Locations" });
   await expect(insights.getByRole("listitem")).toHaveCount(5);
-  await expect(insights.getByRole("listitem").first()).toHaveText("Docker Data21.6 GB›");
+  await expect(insights.getByRole("listitem").first()).toHaveText("Docker DataInsightReveal21.6 GB›");
   await expect(locations.getByRole("listitem")).toHaveText([
-    "User Library73.1 GB›",
-    "Home46.4 GB›",
-    "Applications19.7 GB›",
-    "System Library6.83 GB›",
+    "User LibraryReveal73.1 GB›",
+    "HomeReveal46.4 GB›",
+    "ApplicationsReveal19.7 GB›",
+    "System LibraryReveal6.83 GB›",
   ]);
   const insightsTop = (await insights.boundingBox())?.y ?? 0;
   const locationsTop = (await locations.boundingBox())?.y ?? 0;
@@ -65,9 +65,9 @@ test("drills down into folders and back up the trail without measuring again", a
   await page.getByRole("button", { name: "Open Projects" }).click();
   await expect(page.getByText("21.4 GB in this folder")).toBeVisible();
   await expect(page.getByRole("region", { name: "Contents" }).getByRole("listitem")).toHaveText([
-    "burrow12.1 GB›",
-    "Ảnh chụp6.2 GB›",
-    "quote\"and'apostrophe.zip3.1 GB",
+    "burrowReveal12.1 GB›",
+    "Ảnh chụpReveal6.2 GB›",
+    "quote\"and'apostrophe.zipReveal3.1 GB",
   ]);
   await expect(trail.getByRole("button")).toHaveText(["This Mac", "Home", "Projects"]);
   await expect(trail.getByRole("button", { name: "Projects" })).toHaveAttribute("aria-current", "page");
@@ -100,4 +100,76 @@ test("measures the folder on screen again", async ({ page }) => {
     { kind: "folder", path: "/Users/test" },
     { kind: "folder", path: "/Users/test" },
   ]);
+});
+
+test("lists the largest files anywhere in a folder under its contents", async ({ page }) => {
+  await page.goto("/");
+  await page.keyboard.press("Meta+3");
+  await page.getByRole("button", { name: "Open Home", exact: true }).click();
+
+  const largest = page.getByRole("region", { name: "Largest files in Home" });
+  await expect(largest.getByRole("listitem")).toHaveText([
+    "Trip 2025.movMoviesReveal8.2 GB",
+    "quote\"and'apostrophe.zipProjectsReveal3.1 GB",
+    "Burrow.dmgProjects/burrow/releaseReveal1.2 GB",
+  ]);
+  const contentsTop = (await page.getByRole("region", { name: "Contents" }).boundingBox())?.y ?? 0;
+  const largestTop = (await largest.boundingBox())?.y ?? 0;
+  expect(contentsTop).toBeLessThan(largestTop);
+});
+
+test("labels Regenerable folders and Insights Clean handles", async ({ page }) => {
+  await page.goto("/");
+  await page.keyboard.press("Meta+3");
+
+  const insights = page.getByRole("region", { name: "Insights" });
+  await expect(insights.getByRole("listitem").filter({ hasText: "Homebrew Cache" })).toContainText(
+    "InsightClean handles this",
+  );
+  await expect(insights.getByRole("button", { name: "Clean handles this" })).toHaveCount(2);
+
+  await page.getByRole("button", { name: "Open Home", exact: true }).click();
+  await page.getByRole("button", { name: "Open Projects" }).click();
+  await page.getByRole("button", { name: "Open burrow" }).click();
+  await expect(page.getByRole("region", { name: "Contents" }).getByRole("listitem")).toHaveText([
+    "node_modulesRegenerableReveal6.4 GB›",
+    "distRegenerableReveal3.3 GB›",
+    "releaseReveal1.2 GB›",
+    "srcReveal1.2 GB›",
+  ]);
+});
+
+test("goes to Clean from an Insight Clean handles", async ({ page }) => {
+  await page.goto("/");
+  await page.keyboard.press("Meta+3");
+
+  await page
+    .getByRole("listitem")
+    .filter({ hasText: "System Logs" })
+    .getByRole("button", { name: "Clean handles this" })
+    .click();
+
+  await expect(page.getByRole("tab", { name: "Clean" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tabpanel", { name: "Clean" })).toBeVisible();
+  await page.keyboard.press("Meta+3");
+  await expect(page.getByRole("region", { name: "Insights" })).toBeVisible();
+});
+
+test("reveals any row in Finder, outside Home too, without opening it", async ({ page }) => {
+  await page.goto("/");
+  await page.keyboard.press("Meta+3");
+  const applications = page.getByRole("listitem").filter({ hasText: "Applications" });
+  const reveal = applications.getByRole("button", { name: "Reveal Applications in Finder" });
+  await expect(reveal).toHaveCSS("opacity", "0");
+
+  await applications.hover();
+  await expect(reveal).toHaveCSS("opacity", "1");
+  await reveal.click();
+
+  await page.getByRole("button", { name: "Open Home", exact: true }).click();
+  await page.getByRole("button", { name: "Reveal Trip 2025.mov in Finder" }).click();
+  const revealed = await page.evaluate(() => window.burrowFake?.reveal.calls.map((call) => call.id));
+  expect(revealed).toEqual(["id:/Applications", "id:/Users/test/Movies/Trip 2025.mov"]);
+  const targets = await page.evaluate(() => window.burrowFake?.measure.calls.map((call) => call.target));
+  expect(targets).toEqual([{ kind: "overview" }, { kind: "folder", path: "/Users/test" }]);
 });

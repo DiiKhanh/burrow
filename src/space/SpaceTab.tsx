@@ -17,7 +17,7 @@ export function SpaceTab() {
   const measures = useMeasures();
   const openedRef = useRef(false);
   const { trail, result, measuring, error } = measures;
-  const { target } = lastCrumb(trail);
+  const { name, target } = lastCrumb(trail);
 
   // Space measures nothing in the background: only once the user opens it.
   useEffect(() => {
@@ -47,7 +47,7 @@ export function SpaceTab() {
           (target.kind === "overview" ? (
             <Overview result={result} onOpen={measures.open} />
           ) : (
-            <Folder result={result} onOpen={measures.open} />
+            <Folder name={name} result={result} onOpen={measures.open} />
           ))}
       </div>
     </main>

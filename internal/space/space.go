@@ -17,10 +17,16 @@ import (
 	"time"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/DiiKhanh/burrow/internal/clean"
 )
 
 // ErrInvalidTarget means a Measure was asked for a target Space does not know.
 var ErrInvalidTarget = errors.New("space: invalid Measure target")
+
+// ErrUnknownItem means no current result of this session lists a Space item
+// id.
+var ErrUnknownItem = errors.New("space: unknown Space item")
 
 // TargetKind is what a Measure measures.
 type TargetKind string
@@ -61,6 +67,21 @@ func CleanAbsolute(path string) bool {
 		!strings.ContainsFunc(path, unicode.IsControl)
 }
 
+// Tag is a stable, untranslated label on a Space item.
+type Tag string
+
+const (
+	// TagInsight marks a location Mole flags as commonly taking hidden
+	// space.
+	TagInsight Tag = "insight"
+	// TagRegenerable marks a folder whose content its tools make again,
+	// such as node_modules, a build output or a folder with a CACHEDIR.TAG.
+	TagRegenerable Tag = "regenerable"
+	// TagCleanHandles marks an item in the folders Clean empties: removing
+	// it is Clean's job.
+	TagCleanHandles Tag = "clean-handles"
+)
+
 // SpaceItem is one file or folder shown in Space with its size. Its ID stays
 // the same for its path, so a later Measure keeps it. Opens is the target
 // that measures a folder's contents, nil for anything else.
@@ -70,34 +91,42 @@ type SpaceItem struct {
 	Path  string         `json:"path"`
 	Bytes int64          `json:"bytes"`
 	IsDir bool           `json:"isDir"`
+	Tags  []Tag          `json:"tags"`
 	Opens *MeasureTarget `json:"opens"`
 }
 
 // MeasureResult is what one Measure found, as of MeasuredAt, when it
-// started: a change to the disk while it ran may be missing. Items and
-// Insights are each sorted largest first. Insights lie inside the items, so
+// started: a change to the disk while it ran may be missing. Items,
+// Insights and LargestFiles are each sorted largest first. Insights lie
+// inside the items, and LargestFiles anywhere below a folder's items, so
 // TotalBytes adds up the items only, never counting the same bytes twice.
+// LargestFiles is set for a folder only, never for the overview.
 type MeasureResult struct {
-	Target     MeasureTarget `json:"target"`
-	MeasuredAt time.Time     `json:"measuredAt"`
-	Items      []SpaceItem   `json:"items"`
-	Insights   []SpaceItem   `json:"insights"`
-	TotalBytes int64         `json:"totalBytes"`
+	Target       MeasureTarget `json:"target"`
+	MeasuredAt   time.Time     `json:"measuredAt"`
+	Items        []SpaceItem   `json:"items"`
+	Insights     []SpaceItem   `json:"insights"`
+	LargestFiles []SpaceItem   `json:"largestFiles,omitzero"`
+	TotalBytes   int64         `json:"totalBytes"`
 }
 
 // MeasuredItem is one file or folder as the adapter measured it. Insight
-// marks a location Mole flags as commonly taking hidden space.
+// marks a location Mole flags as commonly taking hidden space, Regenerable
+// a folder whose content its tools make again, such as node_modules.
 type MeasuredItem struct {
-	Name    string
-	Path    string
-	Bytes   int64
-	IsDir   bool
-	Insight bool
+	Name        string
+	Path        string
+	Bytes       int64
+	IsDir       bool
+	Insight     bool
+	Regenerable bool
 }
 
-// Measurement is what the adapter measured for one target.
+// Measurement is what the adapter measured for one target. LargestFiles
+// are files anywhere below a folder, nil for the overview.
 type Measurement struct {
-	Items []MeasuredItem
+	Items        []MeasuredItem
+	LargestFiles []MeasuredItem
 }
 
 // Measurer is the seam filled by the Mole adapter.
@@ -108,6 +137,8 @@ type Measurer interface {
 // Engine is the deep module callers use for Space.
 type Engine struct {
 	measurer Measurer
+	home     string
+	reveal   func(path string)
 
 	mu sync.Mutex
 	// current holds, per target measured this session, the latest result's
@@ -116,14 +147,22 @@ type Engine struct {
 	current map[MeasureTarget]map[string]string
 }
 
-// Options configures an Engine.
+// Options configures an Engine. Reveal shows a path in Finder: the app
+// passes mygo.Shell.ShowItemInFolder.
 type Options struct {
 	Measurer Measurer
+	Home     string
+	Reveal   func(path string)
 }
 
 // NewEngine constructs an Engine from its adapters.
 func NewEngine(options Options) *Engine {
-	return &Engine{measurer: options.Measurer, current: make(map[MeasureTarget]map[string]string)}
+	return &Engine{
+		measurer: options.Measurer,
+		home:     filepath.Clean(options.Home),
+		reveal:   options.Reveal,
+		current:  make(map[MeasureTarget]map[string]string),
+	}
 }
 
 // Measure computes the sizes target holds without removing anything. It
@@ -144,13 +183,7 @@ func (e *Engine) Measure(ctx context.Context, target MeasureTarget) (MeasureResu
 		Insights:   []SpaceItem{},
 	}
 	for _, measured := range measurement.Items {
-		item := SpaceItem{
-			ID:    itemID(measured.Path),
-			Name:  measured.Name,
-			Path:  measured.Path,
-			Bytes: measured.Bytes,
-			IsDir: measured.IsDir,
-		}
+		item := e.spaceItem(measured)
 		if measured.IsDir {
 			item.Opens = &MeasureTarget{Kind: Folder, Path: measured.Path}
 		}
@@ -161,10 +194,65 @@ func (e *Engine) Measure(ctx context.Context, target MeasureTarget) (MeasureResu
 		result.Items = append(result.Items, item)
 		result.TotalBytes += item.Bytes
 	}
+	if target.Kind == Folder {
+		result.LargestFiles = make([]SpaceItem, 0, len(measurement.LargestFiles))
+		for _, measured := range measurement.LargestFiles {
+			result.LargestFiles = append(result.LargestFiles, e.spaceItem(measured))
+		}
+	}
 	slices.SortStableFunc(result.Items, largestFirst)
 	slices.SortStableFunc(result.Insights, largestFirst)
-	e.remember(target, result.Items, result.Insights)
+	slices.SortStableFunc(result.LargestFiles, largestFirst)
+	e.remember(target, result.Items, result.Insights, result.LargestFiles)
 	return result, nil
+}
+
+// spaceItem is measured as Space shows it, opening nothing.
+func (e *Engine) spaceItem(measured MeasuredItem) SpaceItem {
+	tags := []Tag{}
+	if measured.Insight {
+		tags = append(tags, TagInsight)
+	}
+	if measured.Regenerable {
+		tags = append(tags, TagRegenerable)
+	}
+	if e.cleanHandles(measured.Path) {
+		tags = append(tags, TagCleanHandles)
+	}
+	return SpaceItem{
+		ID:    itemID(measured.Path),
+		Name:  measured.Name,
+		Path:  measured.Path,
+		Bytes: measured.Bytes,
+		IsDir: measured.IsDir,
+		Tags:  tags,
+	}
+}
+
+// cleanHandles reports whether path lies in the folders Clean empties. It
+// labels the path as measured, without resolving symlinks: a label, not a
+// safety check.
+func (e *Engine) cleanHandles(path string) bool {
+	rel, err := filepath.Rel(e.home, path)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, "../") {
+		return false
+	}
+	return clean.InGround(filepath.ToSlash(rel))
+}
+
+// Reveal shows the Space item id in Finder. It takes an id a current result
+// lists, never a path (ADR 0004); anywhere on the Mac is fine, since it
+// only shows.
+func (e *Engine) Reveal(id string) error {
+	if e.reveal == nil {
+		return errors.New("space: revealing: no way to reveal configured")
+	}
+	path, ok := e.measuredPath(id)
+	if !ok {
+		return fmt.Errorf("space: revealing: %w: %q", ErrUnknownItem, id)
+	}
+	e.reveal(path)
+	return nil
 }
 
 func (e *Engine) remember(target MeasureTarget, lists ...[]SpaceItem) {

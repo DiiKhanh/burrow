@@ -2,6 +2,7 @@ package space
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"slices"
 	"testing"
@@ -19,7 +20,7 @@ type fakeMeasurer struct {
 func (f *fakeMeasurer) Measure(_ context.Context, target MeasureTarget) (Measurement, error) {
 	f.asked = append(f.asked, target)
 	f.askedAt = time.Now()
-	return Measurement{Items: slices.Clone(f.measurement.Items)}, f.err
+	return Measurement{Items: slices.Clone(f.measurement.Items), LargestFiles: slices.Clone(f.measurement.LargestFiles)}, f.err
 }
 
 const home = "/Users/test"
@@ -146,11 +147,17 @@ func TestMeasurePassesOnTheMeasurersError(t *testing.T) {
 
 // folderMeasurement is what Mole measures inside one project folder.
 func folderMeasurement() Measurement {
-	return Measurement{Items: []MeasuredItem{
-		{Name: "notes.txt", Path: home + "/Projects/app/notes.txt", Bytes: 4_000},
-		{Name: "node_modules", Path: home + "/Projects/app/node_modules", Bytes: 900_000_000, IsDir: true},
-		{Name: "build", Path: home + "/Projects/app/build", Bytes: 2_000_000_000, IsDir: true},
-	}}
+	return Measurement{
+		Items: []MeasuredItem{
+			{Name: "notes.txt", Path: home + "/Projects/app/notes.txt", Bytes: 4_000},
+			{Name: "node_modules", Path: home + "/Projects/app/node_modules", Bytes: 900_000_000, IsDir: true, Regenerable: true},
+			{Name: "build", Path: home + "/Projects/app/build", Bytes: 2_000_000_000, IsDir: true, Regenerable: true},
+		},
+		LargestFiles: []MeasuredItem{
+			{Name: "bundle.js", Path: home + "/Projects/app/build/bundle.js", Bytes: 300_000_000},
+			{Name: "app.dmg", Path: home + "/Projects/app/build/app.dmg", Bytes: 1_200_000_000},
+		},
+	}
 }
 
 func TestMeasureFolderListsWhatItHoldsBySize(t *testing.T) {
@@ -319,4 +326,69 @@ func TestMeasureAgainForgetsWhatTheFolderNoLongerHolds(t *testing.T) {
 			t.Errorf("%s, still in a current result, no longer resolves", path)
 		}
 	}
+}
+
+// Largest files lie anywhere below the folder: they open nothing and add
+// nothing to the total, which their folders already hold.
+func TestMeasureFolderListsItsLargestFilesBySize(t *testing.T) {
+	engine := NewEngine(Options{Measurer: &fakeMeasurer{measurement: folderMeasurement()}})
+
+	result, err := engine.Measure(context.Background(), MeasureTarget{Kind: Folder, Path: home + "/Projects/app"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"app.dmg", "bundle.js"}; !slices.Equal(names(result.LargestFiles), want) {
+		t.Errorf("largest files = %v, want %v", names(result.LargestFiles), want)
+	}
+	for _, file := range result.LargestFiles {
+		if file.IsDir || file.Opens != nil {
+			t.Errorf("%s = %+v, want a file that opens nothing", file.Name, file)
+		}
+		if path, ok := engine.measuredPath(file.ID); !ok || path != file.Path {
+			t.Errorf("id of %s resolves to %q, %v; want its path", file.Path, path, ok)
+		}
+	}
+	if want := int64(2_900_004_000); result.TotalBytes != want {
+		t.Errorf("totalBytes = %d, want %d", result.TotalBytes, want)
+	}
+}
+
+// The UI tells a folder's result from the overview's by largestFiles: a
+// folder always has it, even empty, and the overview never does.
+func TestMeasureSendsLargestFilesForAFolderOnly(t *testing.T) {
+	tests := []struct {
+		name   string
+		target MeasureTarget
+		want   string
+	}{
+		{name: "overview", target: MeasureTarget{Kind: Overview}, want: ""},
+		{name: "folder", target: MeasureTarget{Kind: Folder, Path: home + "/Projects/empty"}, want: "[]"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			engine := NewEngine(Options{Measurer: &fakeMeasurer{}})
+
+			result, err := engine.Measure(context.Background(), test.target)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := jsonField(t, result, "largestFiles"); got != test.want {
+				t.Errorf("largestFiles = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+// jsonField is field of value as the UI receives it, "" when it is left out.
+func jsonField(t *testing.T, value any, field string) string {
+	t.Helper()
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(encoded, &fields); err != nil {
+		t.Fatal(err)
+	}
+	return string(fields[field])
 }
