@@ -65,20 +65,62 @@ cat '`+golden+`'
 	}
 }
 
+func TestMeasurerTranslatesAFolderOfTheBundledAnalyzer(t *testing.T) {
+	golden, err := filepath.Abs("testdata/analyze-folder.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The folder is one argument, however odd its name.
+	bundle := fakeAnalyzer(t, `#!/bin/sh
+set -eu
+test "$#" -eq 2
+test "$1" = --json
+test "$2" = '/Users/test/Projects'
+test "$HOME" = /Users/test
+cat '`+golden+`'
+`)
+	measurer := NewMeasurer(bundle, "/Users/test", quietLogger())
+
+	measurement, err := measurer.Measure(context.Background(), space.MeasureTarget{Kind: space.Folder, Path: "/Users/test/Projects"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Mole names a symlink "<name> →"; it is a link, not a folder to open,
+	// even when it points at one. A folder whose own name ends in " →"
+	// keeps it.
+	want := []space.MeasuredItem{
+		{Name: "app", Path: "/Users/test/Projects/app", Bytes: 3002368, IsDir: true},
+		{Name: "Ảnh chụp", Path: "/Users/test/Projects/Ảnh chụp", Bytes: 1500000, IsDir: true},
+		{Name: "real", Path: "/Users/test/Projects/real", Bytes: 500000, IsDir: true},
+		{Name: `quote"and'apostrophe.txt`, Path: `/Users/test/Projects/quote"and'apostrophe.txt`, Bytes: 12000},
+		{Name: "Drafts →", Path: "/Users/test/Projects/Drafts →", Bytes: 9000, IsDir: true},
+		{Name: "emoji 📦", Path: "/Users/test/Projects/emoji 📦", Bytes: 700, IsDir: true},
+		{Name: "data link", Path: "/Users/test/Projects/data link"},
+		{Name: "shortcut", Path: "/Users/test/Projects/shortcut"},
+	}
+	if !slices.Equal(measurement.Items, want) {
+		t.Errorf("items = %#v, want %#v", measurement.Items, want)
+	}
+}
+
 func TestMeasurerRefusesOutputItCannotTrust(t *testing.T) {
+	folder := space.MeasureTarget{Kind: space.Folder, Path: "/Users/test/Projects"}
 	tests := []struct {
 		name   string
+		target space.MeasureTarget
 		output string
 	}{
-		{name: "not JSON", output: `Measuring...`},
-		{name: "a folder instead of the overview", output: `{"overview": false, "entries": []}`},
+		{name: "not JSON", target: space.MeasureTarget{Kind: space.Overview}, output: `Measuring...`},
+		{name: "a folder instead of the overview", target: space.MeasureTarget{Kind: space.Overview}, output: `{"overview": false, "path": "/", "entries": []}`},
+		{name: "the overview instead of a folder", target: folder, output: `{"overview": true, "path": "/", "entries": []}`},
+		{name: "another folder", target: folder, output: `{"overview": false, "path": "/Users/test", "entries": []}`},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			bundle := fakeAnalyzer(t, "#!/bin/sh\ncat <<'EOF'\n"+test.output+"\nEOF\n")
 			measurer := NewMeasurer(bundle, "/Users/test", quietLogger())
 
-			_, err := measurer.Measure(context.Background(), space.MeasureTarget{Kind: space.Overview})
+			_, err := measurer.Measure(context.Background(), test.target)
 			if err == nil {
 				t.Fatal("Measure trusted the output, want an error")
 			}
@@ -106,6 +148,31 @@ EOF
 		t.Fatal(err)
 	}
 	want := []space.MeasuredItem{{Name: "Applications", Path: "/Applications", Bytes: 7, IsDir: true}}
+	if !slices.Equal(measurement.Items, want) {
+		t.Errorf("items = %#v, want %#v", measurement.Items, want)
+	}
+}
+
+// A folder's rows are what lies directly in it; anything else is a row
+// Mole got wrong.
+func TestMeasurerLeavesOutFolderItemsOutsideTheFolder(t *testing.T) {
+	bundle := fakeAnalyzer(t, `#!/bin/sh
+cat <<'EOF'
+{"overview": false, "path": "/Users/test/Projects", "entries": [
+  {"name": "app", "path": "/Users/test/Projects/app", "size": 7, "is_dir": true},
+  {"name": "deeper", "path": "/Users/test/Projects/app/deeper", "size": 1, "is_dir": true},
+  {"name": "Projects", "path": "/Users/test/Projects", "size": 1, "is_dir": true},
+  {"name": "elsewhere", "path": "/Users/test/elsewhere", "size": 1, "is_dir": true}
+]}
+EOF
+`)
+	measurer := NewMeasurer(bundle, "/Users/test", quietLogger())
+
+	measurement, err := measurer.Measure(context.Background(), space.MeasureTarget{Kind: space.Folder, Path: "/Users/test/Projects"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []space.MeasuredItem{{Name: "app", Path: "/Users/test/Projects/app", Bytes: 7, IsDir: true}}
 	if !slices.Equal(measurement.Items, want) {
 		t.Errorf("items = %#v, want %#v", measurement.Items, want)
 	}

@@ -160,10 +160,11 @@ export interface MeasureResult {
 
 /**
  * MeasureTarget says what one Measure measures. Each Space item that opens
- * will carry the target the UI sends back.
+ * carries the target the UI sends back. Path is set for a Folder only.
  */
 export interface MeasureTarget {
   kind: TargetKind;
+  path?: string;
 }
 
 /** Memory is physical and swap memory usage. */
@@ -282,7 +283,8 @@ export interface Snapshot {
 
 /**
  * SpaceItem is one file or folder shown in Space with its size. Its ID stays
- * the same for its path, so a later Measure keeps it.
+ * the same for its path, so a later Measure keeps it. Opens is the target
+ * that measures a folder's contents, nil for anything else.
  */
 export interface SpaceItem {
   id: string;
@@ -290,10 +292,11 @@ export interface SpaceItem {
   path: string;
   bytes: number;
   isDir: boolean;
+  opens: MeasureTarget | null;
 }
 
 /** TargetKind is what a Measure measures. */
-export type TargetKind = "overview";
+export type TargetKind = "overview" | "folder";
 
 /** Thermal contains the sensors Burrow can show without root. */
 export interface Thermal {

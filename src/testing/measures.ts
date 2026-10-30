@@ -1,5 +1,6 @@
 // Measure results for `vite --mode fake`, shaped like the ones Go sends:
-// the overview of a well-used Mac, each list largest first.
+// the overview of a well-used Mac and a few folders in Home, each list
+// largest first.
 import type { MeasureResult, SpaceItem } from "../mygo";
 
 const GB = 1e9;
@@ -7,7 +8,11 @@ const MB = 1e6;
 const HOME = "/Users/test";
 
 function item(name: string, path: string, bytes: number): SpaceItem {
-  return { id: `id:${path}`, name, path, bytes, isDir: true };
+  return { id: `id:${path}`, name, path, bytes, isDir: true, opens: { kind: "folder", path } };
+}
+
+function file(name: string, path: string, bytes: number): SpaceItem {
+  return { id: `id:${path}`, name, path, bytes, isDir: false, opens: null };
 }
 
 const locations = [
@@ -31,3 +36,36 @@ export const overview: MeasureResult = {
   ],
   totalBytes: 146.03 * GB,
 };
+
+function folder(path: string, items: SpaceItem[], totalBytes: number): MeasureResult {
+  return { target: { kind: "folder", path }, measuredAt: "2026-10-30T09:01:00Z", items, insights: [], totalBytes };
+}
+
+/** Home as the overview opens it, holding more folders and a file. */
+export const homeFolder = folder(
+  HOME,
+  [
+    item("Projects", `${HOME}/Projects`, 21.4 * GB),
+    item("Movies", `${HOME}/Movies`, 12.8 * GB),
+    item("Downloads", `${HOME}/Downloads`, 7.6 * GB),
+    item("Documents", `${HOME}/Documents`, 4.5 * GB),
+    file("notes.txt", `${HOME}/notes.txt`, 12 * 1e3),
+  ],
+  46_300_012_000,
+);
+
+/** Projects in Home, with names that need care. */
+export const projectsFolder = folder(
+  `${HOME}/Projects`,
+  [
+    item("burrow", `${HOME}/Projects/burrow`, 12.1 * GB),
+    item("Ảnh chụp", `${HOME}/Projects/Ảnh chụp`, 6.2 * GB),
+    file(`quote"and'apostrophe.zip`, `${HOME}/Projects/quote"and'apostrophe.zip`, 3.1 * GB),
+  ],
+  21.4 * GB,
+);
+
+/** The fake Measure of the folder at path: Home and Projects, or else nothing. */
+export function folderAt(path: string): MeasureResult {
+  return [homeFolder, projectsFolder].find((known) => known.target.path === path) ?? folder(path, [], 0);
+}
