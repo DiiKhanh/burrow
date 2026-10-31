@@ -6,6 +6,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"sync"
 
@@ -45,7 +46,7 @@ func (s *Clean) Scan(ctx context.Context, updates *mygo.Channel[clean.ScanProgre
 	}
 	result, err := engine.Scan(ctx, updates.Send)
 	if errors.Is(err, mygo.ErrChannelClosed) {
-		return clean.ScanResult{}, context.Canceled
+		return clean.ScanResult{}, fmt.Errorf("service: scanning: %w", context.Canceled)
 	}
 	return result, err
 }
@@ -59,7 +60,7 @@ func (s *Clean) Clean(ctx context.Context, ids []string, updates *mygo.Channel[c
 	}
 	report, err := engine.Clean(ctx, ids, updates.Send)
 	if errors.Is(err, mygo.ErrChannelClosed) {
-		return clean.CleanReport{}, context.Canceled
+		return clean.CleanReport{}, fmt.Errorf("service: cleaning: %w", context.Canceled)
 	}
 	return report, err
 }
