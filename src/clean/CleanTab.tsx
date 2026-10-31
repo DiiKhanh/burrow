@@ -30,8 +30,13 @@ function startClean(ids: readonly string[], onProgress: (progress: CleanProgress
 
 type Phase = "idle" | "scanning" | "review" | "cleaning" | "done";
 
+type Props = {
+  /** A Clean ended, finished or not: one that failed may have removed items already. */
+  onCleanEnded: () => void;
+};
+
 /** The Clean tab: Scan, Review, Clean and Done. */
-export function CleanTab() {
+export function CleanTab({ onCleanEnded }: Props) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [progress, setProgress] = useState<ScanProgress | null>(null);
   const [groupBytes, setGroupBytes] = useState<Partial<Record<JunkGroupID, number>>>({});
@@ -84,13 +89,16 @@ export function CleanTab() {
   const clean = (ids: string[]) => {
     if (!result) return;
     setPhase("cleaning");
-    cleaning.start(result, ids).then(
-      () => setPhase("done"),
-      () => {
-        setError(strings.clean.cleanError);
-        setPhase("idle");
-      },
-    );
+    cleaning
+      .start(result, ids)
+      .finally(onCleanEnded)
+      .then(
+        () => setPhase("done"),
+        () => {
+          setError(strings.clean.cleanError);
+          setPhase("idle");
+        },
+      );
   };
 
   const finish = () => {

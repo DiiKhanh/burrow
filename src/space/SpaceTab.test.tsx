@@ -2,6 +2,7 @@ import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { App } from "../App";
+import type { MeasureResult } from "../mygo";
 import {
   downloadsFolder,
   folderAt,
@@ -11,7 +12,8 @@ import {
   overview,
   unreadableOverview,
 } from "../testing/measures";
-import { fakeGo } from "../testing/mygo.fake";
+import { type CleanCall, fakeGo } from "../testing/mygo.fake";
+import { fullScan } from "../testing/scans";
 
 async function openSpace() {
   const user = userEvent.setup();
@@ -443,6 +445,137 @@ describe("Space Reveal in Finder", () => {
     await act(async () => fakeGo.reveal.last.reject());
 
     expect(screen.getByRole("region", { name: "Locations" })).toBeVisible();
+  });
+});
+
+const MINUTE = 60_000;
+
+/** Settles the Measure with result as of ms from now: a Clean ends by the real clock, so a fixed measuredAt could fall on either side of it. */
+function settleMeasure(ms: number, result: MeasureResult) {
+  const measuredAt = new Date(Date.now() + ms).toISOString();
+  return act(async () => fakeGo.measure.last.resolve({ ...result, measuredAt }));
+}
+
+/** Runs a Scan and Cleans its default selection from the Clean tab, settling the Clean with settle. */
+async function runClean(user: ReturnType<typeof userEvent.setup>, settle: (clean: CleanCall) => void) {
+  await user.keyboard("{Meta>}1{/Meta}");
+  await user.click(screen.getByRole("button", { name: "Start scan" }));
+  await act(async () => fakeGo.scan.last.resolve(fullScan));
+  await user.click(screen.getByRole("button", { name: /^Clean \d+ items/ }));
+  await act(async () => settle(fakeGo.clean.last));
+}
+
+const finished = (clean: CleanCall) => clean.resolve({ items: [], freedBytes: 0, trashedBytes: 0 });
+
+const notice = () => screen.queryByRole("region", { name: "Measured before last clean" });
+
+const measureAgainInNotice = (user: ReturnType<typeof userEvent.setup>) =>
+  user.click(within(screen.getByRole("region", { name: "Measured before last clean" })).getByRole("button"));
+
+describe("Space after a Clean", () => {
+  it("marks a result measured before the last Clean ended", async () => {
+    const user = await openSpace();
+    await settleMeasure(-MINUTE, overview);
+    expect(notice()).not.toBeInTheDocument();
+
+    await runClean(user, finished);
+    await user.keyboard("{Meta>}3{/Meta}");
+
+    expect(notice()).toBeVisible();
+    expect(notice()).toHaveTextContent("Measured before last clean");
+    expect(
+      within(screen.getByRole("region", { name: "Measured before last clean" })).getByRole("button"),
+    ).toHaveTextContent("Measure again");
+    expect(fakeGo.measure.calls).toHaveLength(1);
+  });
+
+  it("does not mark a result measured after the last Clean ended", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await runClean(user, finished);
+
+    await user.keyboard("{Meta>}3{/Meta}");
+    await settleMeasure(MINUTE, overview);
+
+    expect(screen.getByRole("region", { name: "Locations" })).toBeVisible();
+    expect(notice()).not.toBeInTheDocument();
+  });
+
+  it("marks a Measure still running when the Clean ended, since it started before", async () => {
+    const user = await openSpace();
+    await runClean(user, finished);
+
+    await user.keyboard("{Meta>}3{/Meta}");
+    await settleMeasure(-MINUTE, overview);
+
+    expect(notice()).toBeVisible();
+  });
+
+  it("marks a result once a Clean fails, since it may have removed items already", async () => {
+    const user = await openSpace();
+    await settleMeasure(-MINUTE, overview);
+
+    await runClean(user, (clean) => clean.reject());
+    await user.keyboard("{Meta>}3{/Meta}");
+
+    expect(notice()).toBeVisible();
+  });
+
+  it("marks nothing while a Clean is still running", async () => {
+    const user = await openSpace();
+    await settleMeasure(-MINUTE, overview);
+
+    await runClean(user, () => {});
+    await user.keyboard("{Meta>}3{/Meta}");
+
+    expect(screen.getByRole("region", { name: "Locations" })).toBeVisible();
+    expect(notice()).not.toBeInTheDocument();
+  });
+
+  it("measures the folder on screen again from the notice, which goes away", async () => {
+    const user = await openSpace();
+    await settleMeasure(-MINUTE, overview);
+    await user.click(screen.getByRole("button", { name: "Open Home" }));
+    await settleMeasure(-MINUTE, homeFolder);
+    await runClean(user, finished);
+    await user.keyboard("{Meta>}3{/Meta}");
+
+    await measureAgainInNotice(user);
+
+    expect(fakeGo.measure.calls).toHaveLength(3);
+    expect(fakeGo.measure.last.target).toEqual({ kind: "folder", path: HOME, excludeLibrary: true });
+    await settleMeasure(MINUTE, homeFolder);
+    expect(screen.getByRole("region", { name: "Contents" })).toBeVisible();
+    expect(notice()).not.toBeInTheDocument();
+  });
+
+  it("keeps marking the folders not measured again", async () => {
+    const user = await openSpace();
+    await settleMeasure(-MINUTE, overview);
+    await user.click(screen.getByRole("button", { name: "Open Home" }));
+    await settleMeasure(-MINUTE, homeFolder);
+    await runClean(user, finished);
+    await user.keyboard("{Meta>}3{/Meta}");
+    await measureAgainInNotice(user);
+    await settleMeasure(MINUTE, homeFolder);
+
+    await user.click(screen.getByRole("button", { name: "This Mac" }));
+
+    expect(screen.getByRole("region", { name: "Locations" })).toBeVisible();
+    expect(notice()).toBeVisible();
+  });
+
+  it("keeps the notice when its Measure again is cancelled", async () => {
+    const user = await openSpace();
+    await settleMeasure(-MINUTE, overview);
+    await runClean(user, finished);
+    await user.keyboard("{Meta>}3{/Meta}");
+
+    await measureAgainInNotice(user);
+    expect(notice()).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(notice()).toBeVisible();
   });
 });
 

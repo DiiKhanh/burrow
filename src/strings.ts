@@ -260,6 +260,7 @@ export const strings = {
       separator: "/",
     },
     measureAgain: "Measure again",
+    stale: "Measured before last clean",
     /** What to do once Full Disk Access is on. */
     retryStep: "measure again",
     /** Beside the size of a Space item only partly read: the size may be low. */

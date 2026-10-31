@@ -9,7 +9,7 @@ describe("Clean Scan", () => {
   it("starts at the Scan call-to-action and enters Strata scanning", async () => {
     const user = userEvent.setup();
 
-    render(<CleanTab />);
+    render(<CleanTab onCleanEnded={() => {}} />);
     expect(screen.getByRole("heading", { name: "Let's see what can go." })).toBeVisible();
 
     await user.click(screen.getByRole("button", { name: "Start scan" }));
@@ -21,7 +21,7 @@ describe("Clean Scan", () => {
 
   it("shows mapped progress, recomputed bytes, current path, and indeterminate state", async () => {
     const user = userEvent.setup();
-    render(<CleanTab />);
+    render(<CleanTab onCleanEnded={() => {}} />);
     await user.click(screen.getByRole("button", { name: "Start scan" }));
     const scan = fakeGo.scan.last;
 
@@ -53,7 +53,7 @@ describe("Clean Scan", () => {
 
   it("cancels the channel and ignores late progress and results", async () => {
     const user = userEvent.setup();
-    render(<CleanTab />);
+    render(<CleanTab onCleanEnded={() => {}} />);
     await user.click(screen.getByRole("button", { name: "Start scan" }));
     const scan = fakeGo.scan.last;
     await user.click(screen.getByRole("button", { name: "Cancel" }));
@@ -90,7 +90,7 @@ describe("Clean Scan", () => {
 
   it("keeps a new Scan clear of the cancelled one ending in error", async () => {
     const user = userEvent.setup();
-    render(<CleanTab />);
+    render(<CleanTab onCleanEnded={() => {}} />);
     await user.click(screen.getByRole("button", { name: "Start scan" }));
     const cancelled = fakeGo.scan.last;
     await user.click(screen.getByRole("button", { name: "Cancel" }));
@@ -608,7 +608,7 @@ function wholeText(text: string) {
 /** Scans to completion and lands on Review with result. */
 async function review(result: ScanResult) {
   const user = userEvent.setup();
-  render(<CleanTab />);
+  render(<CleanTab onCleanEnded={() => {}} />);
   await user.click(screen.getByRole("button", { name: "Start scan" }));
   await act(async () => {
     fakeGo.scan.last.resolve(result);

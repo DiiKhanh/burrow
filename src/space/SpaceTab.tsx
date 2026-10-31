@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import type { MeasureTarget } from "../mygo";
 import { useTabActive } from "../shell/activeTab";
+import { Notice } from "../shell/Notice";
 import { PillButton } from "../shell/PillButton";
 import { strings } from "../strings";
 import { Folder } from "./Folder";
@@ -10,9 +11,10 @@ import { lastCrumb, type Measures, type Trail, useMeasures } from "./useMeasures
 /**
  * The Space tab: the overview of the whole Mac, measured the first time the
  * tab opens, and every folder opened from it. Results stay while other tabs
- * show, since every tab stays mounted.
+ * show, since every tab stays mounted. A result measured before the last
+ * Clean ended, at lastCleanAt, says so and stays until measured again.
  */
-export function SpaceTab() {
+export function SpaceTab({ lastCleanAt }: { lastCleanAt: number | null }) {
   const active = useTabActive();
   const measures = useMeasures();
   const openedRef = useRef(false);
@@ -28,6 +30,12 @@ export function SpaceTab() {
 
   // Before the overview's first result, the tab has nowhere to go back to.
   const started = trail.length > 1 || result !== null;
+  const stale = result !== null && lastCleanAt !== null && Date.parse(result.measuredAt) < lastCleanAt;
+  const notice = stale && (
+    <Notice label={strings.space.stale} action={strings.space.measureAgain} onAction={measures.measureAgain}>
+      {strings.space.stale}
+    </Notice>
+  );
   return (
     <main className="flex min-h-0 flex-1 flex-col overflow-y-auto">
       <div className="mx-auto flex w-full max-w-clean flex-1 flex-col gap-6 px-6 pt-8 pb-16">
@@ -45,9 +53,9 @@ export function SpaceTab() {
         {!measuring &&
           result &&
           (target.kind === "overview" ? (
-            <Overview result={result} onOpen={measures.open} />
+            <Overview result={result} notice={notice} onOpen={measures.open} />
           ) : (
-            <Folder name={name} result={result} onOpen={measures.open} />
+            <Folder name={name} result={result} notice={notice} onOpen={measures.open} />
           ))}
       </div>
     </main>
