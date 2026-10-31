@@ -90,6 +90,7 @@ cat '`+golden+`'
 	// keeps it.
 	want := []space.MeasuredItem{
 		{Name: "app", Path: "/Users/test/Projects/app", Bytes: 3002368, IsDir: true},
+		{Name: "node_modules", Path: "/Users/test/Projects/node_modules", Bytes: 2400000, IsDir: true, Regenerable: true},
 		{Name: "Ảnh chụp", Path: "/Users/test/Projects/Ảnh chụp", Bytes: 1500000, IsDir: true},
 		{Name: "real", Path: "/Users/test/Projects/real", Bytes: 500000, IsDir: true},
 		{Name: `quote"and'apostrophe.txt`, Path: `/Users/test/Projects/quote"and'apostrophe.txt`, Bytes: 12000},
@@ -100,6 +101,13 @@ cat '`+golden+`'
 	}
 	if !slices.Equal(measurement.Items, want) {
 		t.Errorf("items = %#v, want %#v", measurement.Items, want)
+	}
+	wantFiles := []space.MeasuredItem{
+		{Name: "app.dmg", Path: "/Users/test/Projects/app/build/app.dmg", Bytes: 2900000},
+		{Name: "IMG 0001.heic", Path: "/Users/test/Projects/Ảnh chụp/IMG 0001.heic", Bytes: 1500000},
+	}
+	if !slices.Equal(measurement.LargestFiles, wantFiles) {
+		t.Errorf("largest files = %#v, want %#v", measurement.LargestFiles, wantFiles)
 	}
 }
 
@@ -175,6 +183,66 @@ EOF
 	want := []space.MeasuredItem{{Name: "app", Path: "/Users/test/Projects/app", Bytes: 7, IsDir: true}}
 	if !slices.Equal(measurement.Items, want) {
 		t.Errorf("items = %#v, want %#v", measurement.Items, want)
+	}
+}
+
+// Mole may find a folder's largest files through Spotlight: one that is
+// not below the folder, or that Burrow cannot trust, is left out.
+func TestMeasurerLeavesOutLargestFilesOutsideTheFolder(t *testing.T) {
+	bundle := fakeAnalyzer(t, `#!/bin/sh
+cat <<'EOF'
+{"overview": false, "path": "/Users/test/Projects", "entries": [], "large_files": [
+  {"name": "deep.iso", "path": "/Users/test/Projects/app/deep.iso", "size": 9},
+  {"name": "elsewhere.iso", "path": "/Users/test/elsewhere.iso", "size": 8},
+  {"name": "sibling.iso", "path": "/Users/test/Projects2/sibling.iso", "size": 8},
+  {"name": "Projects", "path": "/Users/test/Projects", "size": 8},
+  {"name": "climbs.iso", "path": "/Users/test/Projects/../climbs.iso", "size": 8},
+  {"name": "negative.iso", "path": "/Users/test/Projects/negative.iso", "size": -1},
+  {"name": "top.iso", "path": "/Users/test/Projects/top.iso", "size": 7}
+]}
+EOF
+`)
+	measurer := NewMeasurer(bundle, "/Users/test", quietLogger())
+
+	measurement, err := measurer.Measure(context.Background(), space.MeasureTarget{Kind: space.Folder, Path: "/Users/test/Projects"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []space.MeasuredItem{
+		{Name: "deep.iso", Path: "/Users/test/Projects/app/deep.iso", Bytes: 9},
+		{Name: "top.iso", Path: "/Users/test/Projects/top.iso", Bytes: 7},
+	}
+	if !slices.Equal(measurement.LargestFiles, want) {
+		t.Errorf("largest files = %#v, want %#v", measurement.LargestFiles, want)
+	}
+}
+
+// Mole marks regenerable folders in the overview too, such as an Insight
+// named DerivedData. The overview has no largest files.
+func TestMeasurerTranslatesRegenerableOverviewRows(t *testing.T) {
+	bundle := fakeAnalyzer(t, `#!/bin/sh
+cat <<'EOF'
+{"overview": true, "path": "/", "entries": [
+  {"name": "Xcode DerivedData", "path": "/Users/test/Library/Developer/Xcode/DerivedData", "size": 5, "is_dir": true, "insight": true, "cleanable": true}
+], "large_files": [
+  {"name": "big.iso", "path": "/Users/test/big.iso", "size": 9}
+]}
+EOF
+`)
+	measurer := NewMeasurer(bundle, "/Users/test", quietLogger())
+
+	measurement, err := measurer.Measure(context.Background(), space.MeasureTarget{Kind: space.Overview})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []space.MeasuredItem{
+		{Name: "Xcode DerivedData", Path: "/Users/test/Library/Developer/Xcode/DerivedData", Bytes: 5, IsDir: true, Insight: true, Regenerable: true},
+	}
+	if !slices.Equal(measurement.Items, want) {
+		t.Errorf("items = %#v, want %#v", measurement.Items, want)
+	}
+	if measurement.LargestFiles != nil {
+		t.Errorf("largest files = %#v, want none for the overview", measurement.LargestFiles)
 	}
 }
 

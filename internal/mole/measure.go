@@ -33,17 +33,22 @@ func NewMeasurer(bundle Bundle, home string, logger *slog.Logger) *Measurer {
 // analyzeOutput is what `analyze-go --json` prints. Its total_size is left
 // out on purpose: it adds the insights to the locations they lie in.
 type analyzeOutput struct {
-	Overview bool           `json:"overview"`
-	Path     string         `json:"path"`
-	Entries  []analyzeEntry `json:"entries"`
+	Overview   bool           `json:"overview"`
+	Path       string         `json:"path"`
+	Entries    []analyzeEntry `json:"entries"`
+	LargeFiles []analyzeEntry `json:"large_files"`
 }
 
+// analyzeEntry is a row of entries or of large_files, which carries the
+// first three fields only. Mole sets cleanable on a folder `mo clean` leaves
+// alone whose content is regenerable.
 type analyzeEntry struct {
-	Name    string `json:"name"`
-	Path    string `json:"path"`
-	Size    int64  `json:"size"`
-	IsDir   bool   `json:"is_dir"`
-	Insight bool   `json:"insight"`
+	Name      string `json:"name"`
+	Path      string `json:"path"`
+	Size      int64  `json:"size"`
+	IsDir     bool   `json:"is_dir"`
+	Insight   bool   `json:"insight"`
+	Cleanable bool   `json:"cleanable"`
 }
 
 // symlinkSuffix is what Mole appends to a symlink's name in a folder.
@@ -93,7 +98,7 @@ func (m *Measurer) Measure(ctx context.Context, target space.MeasureTarget) (spa
 	if output.Overview || output.Path != target.Path {
 		return space.Measurement{}, fmt.Errorf("mole: the disk analyzer measured %q, not %q", output.Path, target.Path)
 	}
-	return m.folder(target.Path, output.Entries), nil
+	return m.folder(target.Path, output.Entries, output.LargeFiles), nil
 }
 
 // overview translates the overview's entries, which carry Mole's labels
@@ -105,21 +110,22 @@ func (m *Measurer) overview(entries []analyzeEntry) space.Measurement {
 			continue
 		}
 		items = append(items, space.MeasuredItem{
-			Name:    entry.Name,
-			Path:    entry.Path,
-			Bytes:   entry.Size,
-			IsDir:   entry.IsDir,
-			Insight: entry.Insight,
+			Name:        entry.Name,
+			Path:        entry.Path,
+			Bytes:       entry.Size,
+			IsDir:       entry.IsDir,
+			Insight:     entry.Insight,
+			Regenerable: entry.Cleanable,
 		})
 	}
 	return space.Measurement{Items: items}
 }
 
-// folder translates the entries directly in folder. Mole marks a symlink
-// only by appending symlinkSuffix to its name, and sets is_dir when it
-// points at a folder; Space never opens a link, so it becomes a plain item
-// under its own name.
-func (m *Measurer) folder(folder string, entries []analyzeEntry) space.Measurement {
+// folder translates the entries directly in folder and the large files
+// anywhere below it. Mole marks a symlink only by appending symlinkSuffix
+// to its name, and sets is_dir when it points at a folder; Space never
+// opens a link, so it becomes a plain item under its own name.
+func (m *Measurer) folder(folder string, entries, largeFiles []analyzeEntry) space.Measurement {
 	items := make([]space.MeasuredItem, 0, len(entries))
 	for _, entry := range entries {
 		if !m.trusted(entry) {
@@ -132,13 +138,27 @@ func (m *Measurer) folder(folder string, entries []analyzeEntry) space.Measureme
 		name := filepath.Base(entry.Path)
 		isLink := entry.Name == name+symlinkSuffix
 		items = append(items, space.MeasuredItem{
-			Name:  name,
-			Path:  entry.Path,
-			Bytes: entry.Size,
-			IsDir: entry.IsDir && !isLink,
+			Name:        name,
+			Path:        entry.Path,
+			Bytes:       entry.Size,
+			IsDir:       entry.IsDir && !isLink,
+			Regenerable: entry.Cleanable && !isLink,
 		})
 	}
-	return space.Measurement{Items: items}
+	// Mole may find large files through Spotlight, which is not bound to
+	// what it walked.
+	files := make([]space.MeasuredItem, 0, len(largeFiles))
+	for _, file := range largeFiles {
+		if !m.trusted(file) {
+			continue
+		}
+		if !within(folder, file.Path) || file.Path == folder {
+			m.logger.Warn("ignoring disk analyzer large file outside the folder", "folder", folder, "path", file.Path)
+			continue
+		}
+		files = append(files, space.MeasuredItem{Name: filepath.Base(file.Path), Path: file.Path, Bytes: file.Size})
+	}
+	return space.Measurement{Items: items, LargestFiles: files}
 }
 
 // trusted is false, with a warning, for an entry whose path or size cannot

@@ -12,6 +12,14 @@
     },
     {
       "scan_status": "complete",
+      "name": "node_modules",
+      "path": "/Users/test/Projects/node_modules",
+      "size": 2400000,
+      "is_dir": true,
+      "cleanable": true
+    },
+    {
+      "scan_status": "complete",
       "name": "Ảnh chụp",
       "path": "/Users/test/Projects/Ảnh chụp",
       "size": 1500000,
@@ -65,11 +73,16 @@
   ],
   "large_files": [
     {
+      "name": "app.dmg",
+      "path": "/Users/test/Projects/app/build/app.dmg",
+      "size": 2900000
+    },
+    {
       "name": "IMG 0001.heic",
       "path": "/Users/test/Projects/Ảnh chụp/IMG 0001.heic",
       "size": 1500000
     }
   ],
-  "total_size": 5024068,
-  "total_files": 5
+  "total_size": 7424068,
+  "total_files": 6
 }

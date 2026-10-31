@@ -24,6 +24,7 @@ export type ScanCall = StreamCall<Real.ScanProgress, Real.ScanResult>;
 export type CleanCall = StreamCall<Real.CleanProgress, Real.CleanReport> & { readonly ids: readonly string[] };
 export type MeasureCall = StreamCall<Real.NoProgress, Real.MeasureResult> & { readonly target: Real.MeasureTarget };
 export type PrivacyCall = Pending<Real.SettingsPane>;
+export type RevealCall = Pending<void> & { readonly id: string };
 export type LockedCall = Pending<Real.LockedGroup[]>;
 
 /** The calls one method of the fake received, oldest first. */
@@ -93,6 +94,7 @@ function streamCall<P, T>(updates: { onmessage: ((value: P) => void) | null; rea
 const scans = callLog<ScanCall>("Clean.scan");
 const cleans = callLog<CleanCall>("Clean.clean");
 const measures = callLog<MeasureCall>("Space.measure");
+const reveals = callLog<RevealCall>("Space.reveal");
 const privacy = callLog<PrivacyCall>("Privacy.openFullDiskAccess");
 const locks = callLog<LockedCall>("Clean.locked");
 
@@ -118,6 +120,11 @@ export const Space = {
   measure: (target: Real.MeasureTarget, updates: MeasureUpdates): Promise<Real.MeasureResult> => {
     const { call, promise } = streamCall<Real.NoProgress, Real.MeasureResult>(updates);
     measures.record(Object.assign(call, { target: { ...target } }));
+    return promise;
+  },
+  reveal: (id: string): Promise<void> => {
+    const { promise, ...call } = pending<void>();
+    reveals.record({ ...call, id });
     return promise;
   },
 } as const satisfies typeof Real.Space;
@@ -173,6 +180,7 @@ export const fakeGo = {
   clean: cleans.log,
   locked: locks.log,
   measure: measures.log,
+  reveal: reveals.log,
   privacy: privacy.log,
   status: { emit: (snapshot: Real.Snapshot) => events.status.emit(snapshot) },
 };
@@ -185,6 +193,7 @@ export function resetFake() {
   cleans.reset();
   locks.reset();
   measures.reset();
+  reveals.reset();
   privacy.reset();
 }
 

@@ -83,17 +83,17 @@ describe("Space overview", () => {
         .getAllByRole("listitem")
         .map((row) => row.textContent);
     expect(rows("Insights")).toEqual([
-      "Docker Data21.6 GB›",
-      "Xcode Simulators3.07 GB›",
-      "Old Downloads (90d+)3.02 GB›",
-      "Homebrew Cache181 MB›",
-      "System Logs2.1 MB›",
+      "Docker DataInsightReveal21.6 GB›",
+      "Xcode SimulatorsInsightReveal3.07 GB›",
+      "Old Downloads (90d+)InsightReveal3.02 GB›",
+      "Homebrew CacheInsightClean handles thisReveal181 MB›",
+      "System LogsInsightClean handles thisReveal2.1 MB›",
     ]);
     expect(rows("Locations")).toEqual([
-      "User Library73.1 GB›",
-      "Home46.4 GB›",
-      "Applications19.7 GB›",
-      "System Library6.83 GB›",
+      "User LibraryReveal73.1 GB›",
+      "HomeReveal46.4 GB›",
+      "ApplicationsReveal19.7 GB›",
+      "System LibraryReveal6.83 GB›",
     ]);
   });
 
@@ -152,11 +152,11 @@ describe("Space folders", () => {
       .getAllByRole("listitem")
       .map((row) => row.textContent);
     expect(rows).toEqual([
-      "Projects21.4 GB›",
-      "Movies12.8 GB›",
-      "Downloads7.6 GB›",
-      "Documents4.5 GB›",
-      "notes.txt12 KB",
+      "ProjectsReveal21.4 GB›",
+      "MoviesReveal12.8 GB›",
+      "DownloadsReveal7.6 GB›",
+      "DocumentsReveal4.5 GB›",
+      "notes.txtReveal12 KB",
     ]);
     expect(screen.queryByRole("button", { name: "Open notes.txt" })).not.toBeInTheDocument();
   });
@@ -266,5 +266,108 @@ describe("Space folders", () => {
     await act(async () => fakeGo.measure.last.resolve(folderAt("/Applications")));
 
     expect(screen.getByText("This folder is empty.")).toBeVisible();
+  });
+});
+
+function rowsOf(region: string) {
+  return within(screen.getByRole("region", { name: region }))
+    .getAllByRole("listitem")
+    .map((row) => row.textContent);
+}
+
+describe("Space largest files", () => {
+  it("lists the largest files anywhere in the folder, with the folder each lies in", async () => {
+    const user = await openOverview();
+    await openFolder(user, "Home", HOME);
+
+    expect(screen.getAllByRole("region")).toEqual([
+      screen.getByRole("region", { name: "Contents" }),
+      screen.getByRole("region", { name: "Largest files in Home" }),
+    ]);
+    expect(rowsOf("Largest files in Home")).toEqual([
+      "Trip 2025.movMoviesReveal8.2 GB",
+      `quote"and'apostrophe.zipProjectsReveal3.1 GB`,
+      "Burrow.dmgProjects/burrow/releaseReveal1.2 GB",
+    ]);
+  });
+
+  it("names the folder the largest files lie in", async () => {
+    const user = await openOverview();
+    await openFolder(user, "Home", HOME);
+    await openFolder(user, "Projects", `${HOME}/Projects`);
+
+    expect(rowsOf("Largest files in Projects")).toEqual([
+      `quote"and'apostrophe.zipReveal3.1 GB`,
+      "Burrow.dmgburrow/releaseReveal1.2 GB",
+    ]);
+  });
+
+  it("shows no largest files for the overview or a folder without any", async () => {
+    const user = await openOverview();
+    expect(screen.queryByRole("region", { name: /^Largest files/ })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Open Applications" }));
+    await act(async () => fakeGo.measure.last.resolve(folderAt("/Applications")));
+    expect(screen.queryByRole("region", { name: /^Largest files/ })).not.toBeInTheDocument();
+  });
+});
+
+describe("Space tags", () => {
+  it("labels folders their tools make again Regenerable", async () => {
+    const user = await openOverview();
+    await openFolder(user, "Home", HOME);
+    await openFolder(user, "Projects", `${HOME}/Projects`);
+    await openFolder(user, "burrow", `${HOME}/Projects/burrow`);
+
+    expect(rowsOf("Contents")).toEqual([
+      "node_modulesRegenerableReveal6.4 GB›",
+      "distRegenerableReveal3.3 GB›",
+      "releaseReveal1.2 GB›",
+      "srcReveal1.2 GB›",
+    ]);
+  });
+
+  it("sends an Insight Clean empties to the Clean tab", async () => {
+    const user = await openOverview();
+    // Homebrew Cache and System Logs, in that order.
+    const [homebrew, ...others] = within(screen.getByRole("region", { name: "Insights" })).getAllByRole("button", {
+      name: "Clean handles this",
+    });
+    expect(others).toHaveLength(1);
+
+    await user.click(homebrew ?? document.body);
+
+    expect(screen.getByRole("tab", { name: "Clean" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tabpanel", { name: "Clean" })).toBeVisible();
+    expect(fakeGo.measure.calls).toHaveLength(1);
+  });
+});
+
+describe("Space Reveal in Finder", () => {
+  it("reveals any row by its id, outside Home too, without opening it", async () => {
+    const user = await openOverview();
+
+    await user.click(screen.getByRole("button", { name: "Reveal Applications in Finder" }));
+
+    expect(fakeGo.reveal.last.id).toBe("id:/Applications");
+    expect(fakeGo.measure.calls).toHaveLength(1);
+  });
+
+  it("reveals a largest file", async () => {
+    const user = await openOverview();
+    await openFolder(user, "Home", HOME);
+
+    await user.click(screen.getByRole("button", { name: "Reveal Trip 2025.mov in Finder" }));
+
+    expect(fakeGo.reveal.last.id).toBe(`id:${HOME}/Movies/Trip 2025.mov`);
+  });
+
+  it("stays put when Go could not reveal the item", async () => {
+    const user = await openOverview();
+    await user.click(screen.getByRole("button", { name: "Reveal Home in Finder" }));
+
+    await act(async () => fakeGo.reveal.last.reject());
+
+    expect(screen.getByRole("region", { name: "Locations" })).toBeVisible();
   });
 });

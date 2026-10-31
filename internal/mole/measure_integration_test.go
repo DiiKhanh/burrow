@@ -7,6 +7,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -29,10 +30,19 @@ func TestIntegrationBundledAnalyzeDrillsDownTheGeneratedHome(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(build, "out.bin"), bytes.Repeat([]byte{1}, 1<<20), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	// Mole looks for large files outside folders it folds, such as build.
+	media := filepath.Join(home, "Projects", "my app", "media")
+	if err := os.MkdirAll(media, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	demo := filepath.Join(media, "demo.mov")
+	if err := os.WriteFile(demo, bytes.Repeat([]byte{2}, 2<<20), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.Symlink("my app", filepath.Join(home, "Projects", "latest")); err != nil {
 		t.Fatal(err)
 	}
-	engine := space.NewEngine(space.Options{Measurer: NewMeasurer(bundled(t), home, quietLogger())})
+	engine := space.NewEngine(space.Options{Measurer: NewMeasurer(bundled(t), home, quietLogger()), Home: home})
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 
@@ -44,6 +54,12 @@ func TestIntegrationBundledAnalyzeDrillsDownTheGeneratedHome(t *testing.T) {
 		if item := itemNamed(t, result, name); item.Opens == nil {
 			t.Errorf("%s opens nothing, want its folder", name)
 		}
+	}
+	if trash := itemNamed(t, result, ".Trash"); !slices.Contains(trash.Tags, space.TagCleanHandles) {
+		t.Errorf(".Trash tags = %q, want %q", trash.Tags, space.TagCleanHandles)
+	}
+	if !slices.ContainsFunc(result.LargestFiles, func(file space.SpaceItem) bool { return file.Path == demo }) {
+		t.Errorf("largest files of Home = %+v, want %s among them", result.LargestFiles, demo)
 	}
 
 	projects := itemNamed(t, result, "Projects")
@@ -62,8 +78,12 @@ func TestIntegrationBundledAnalyzeDrillsDownTheGeneratedHome(t *testing.T) {
 	if built.Path != build || built.Bytes < 1<<20 {
 		t.Errorf("build = %+v, want %s of at least 1 MiB", built, build)
 	}
-	if result.TotalBytes != built.Bytes {
-		t.Errorf("totalBytes = %d, want build's %d", result.TotalBytes, built.Bytes)
+	if !slices.Contains(built.Tags, space.TagRegenerable) {
+		t.Errorf("build tags = %q, want %q", built.Tags, space.TagRegenerable)
+	}
+	// testhome's other files take no blocks.
+	if want := built.Bytes + itemNamed(t, result, "media").Bytes; result.TotalBytes != want {
+		t.Errorf("totalBytes = %d, want build's and media's %d", result.TotalBytes, want)
 	}
 }
 

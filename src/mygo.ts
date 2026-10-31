@@ -146,15 +146,18 @@ export interface LockedGroup {
 
 /**
  * MeasureResult is what one Measure found, as of MeasuredAt, when it
- * started: a change to the disk while it ran may be missing. Items and
- * Insights are each sorted largest first. Insights lie inside the items, so
+ * started: a change to the disk while it ran may be missing. Items,
+ * Insights and LargestFiles are each sorted largest first. Insights lie
+ * inside the items, and LargestFiles anywhere below a folder's items, so
  * TotalBytes adds up the items only, never counting the same bytes twice.
+ * LargestFiles is set for a folder only, never for the overview.
  */
 export interface MeasureResult {
   target: MeasureTarget;
   measuredAt: string;
   items: SpaceItem[];
   insights: SpaceItem[];
+  largestFiles?: SpaceItem[];
   totalBytes: number;
 }
 
@@ -292,8 +295,12 @@ export interface SpaceItem {
   path: string;
   bytes: number;
   isDir: boolean;
+  tags: Tag[];
   opens: MeasureTarget | null;
 }
+
+/** Tag is a stable, untranslated label on a Space item. */
+export type Tag = "insight" | "regenerable" | "clean-handles";
 
 /** TargetKind is what a Measure measures. */
 export type TargetKind = "overview" | "folder";
@@ -344,6 +351,13 @@ export const Space = {
    */
   measure(target: MeasureTarget, updates: Channel<NoProgress>): Promise<MeasureResult> {
     return call("Space.Measure", target, updates);
+  },
+  /**
+   * Reveal shows the Space item id in Finder. Go logs why when it cannot,
+   * so the page may drop the rejection.
+   */
+  reveal(id: string): Promise<void> {
+    return call("Space.Reveal", id);
   },
 } as const;
 
