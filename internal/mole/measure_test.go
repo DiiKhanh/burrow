@@ -111,6 +111,53 @@ cat '`+golden+`'
 	}
 }
 
+// Mole prints last_access only; the time a row was last modified is Burrow's
+// to read, of the link itself for a symlink. A row gone by then has none.
+func TestMeasurerAddsWhenEachRowWasLastModified(t *testing.T) {
+	folder := t.TempDir()
+	old := filepath.Join(folder, "old.zip")
+	if err := os.WriteFile(old, []byte("zip"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	modified := time.Date(2025, 3, 4, 5, 6, 7, 0, time.UTC)
+	if err := os.Chtimes(old, modified, modified); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(folder, "link")
+	if err := os.Symlink(old, link); err != nil {
+		t.Fatal(err)
+	}
+	gone := filepath.Join(folder, "gone")
+	bundle := fakeAnalyzer(t, `#!/bin/sh
+cat <<'EOF'
+{"overview": false, "path": "`+folder+`", "entries": [
+  {"name": "old.zip", "path": "`+old+`", "size": 3, "last_access": "2026-10-30T03:33:52Z"},
+  {"name": "link →", "path": "`+link+`", "size": 0},
+  {"name": "gone", "path": "`+gone+`", "size": 1}
+]}
+EOF
+`)
+	measurer := NewMeasurer(bundle, "/Users/test", quietLogger())
+	before := time.Now().Add(-time.Minute)
+
+	measurement, err := measurer.Measure(context.Background(), space.MeasureTarget{Kind: space.Folder, Path: folder})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(measurement.Items) != 3 {
+		t.Fatalf("items = %#v, want 3", measurement.Items)
+	}
+	if got := measurement.Items[0].ModTime; !got.Equal(modified) {
+		t.Errorf("old.zip modified %v, want %v", got, modified)
+	}
+	if got := measurement.Items[1].ModTime; got.Before(before) {
+		t.Errorf("link modified %v, want the link's own time, not its target's", got)
+	}
+	if got := measurement.Items[2].ModTime; !got.IsZero() {
+		t.Errorf("gone modified %v, want no time", got)
+	}
+}
+
 func TestMeasurerRefusesOutputItCannotTrust(t *testing.T) {
 	folder := space.MeasureTarget{Kind: space.Folder, Path: "/Users/test/Projects"}
 	tests := []struct {

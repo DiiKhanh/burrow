@@ -124,7 +124,7 @@ async function runMeasure(call: MeasureCall, scenario: string | null) {
     return;
   }
   if (!(await stillRunning(call, 30)) || scenario === "running") return;
-  call.resolve(call.target.kind === "folder" ? folderAt(call.target.path ?? "") : overview);
+  call.resolve(call.target.kind === "folder" ? folderAt(call.target) : overview);
 }
 
 function scanFor(scenario: string | null): ScanResult {
