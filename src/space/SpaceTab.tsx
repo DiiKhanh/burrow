@@ -6,17 +6,21 @@ import { PillButton } from "../shell/PillButton";
 import { strings } from "../strings";
 import { Folder } from "./Folder";
 import { Overview } from "./Overview";
+import { TrashFooter } from "./TrashFooter";
 import { lastCrumb, type Measures, type Trail, useMeasures } from "./useMeasures";
+import { useTrash } from "./useTrash";
 
 /**
  * The Space tab: the overview of the whole Mac, measured the first time the
  * tab opens, and every folder opened from it. Results stay while other tabs
- * show, since every tab stays mounted. A result measured before the last
- * Clean ended, at lastCleanAt, says so and stays until measured again.
+ * show, since every tab stays mounted, as do the picks, which the footer
+ * moves to the Trash. A result measured before the last Clean ended, at
+ * lastCleanAt, says so and stays until measured again.
  */
 export function SpaceTab({ lastCleanAt }: { lastCleanAt: number | null }) {
   const active = useTabActive();
   const measures = useMeasures();
+  const trash = useTrash(measures);
   const openedRef = useRef(false);
   const { trail, result, measuring, error } = measures;
   const { name, target } = lastCrumb(trail);
@@ -37,27 +41,30 @@ export function SpaceTab({ lastCleanAt }: { lastCleanAt: number | null }) {
     </Notice>
   );
   return (
-    <main className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-      <div className="mx-auto flex w-full max-w-clean flex-1 flex-col gap-6 px-6 pt-8 pb-16">
-        {!started && !measuring && (
-          <section className="flex flex-1 flex-col items-center justify-center gap-5 text-center">
-            <h1 className="font-bold text-title">{strings.space.idle.title}</h1>
-            <p className="text-ink-muted text-note">{strings.space.idle.description}</p>
-            {error && <p className="text-body text-danger">{error}</p>}
-            <PillButton onClick={measures.measureAgain}>{strings.space.idle.action}</PillButton>
-          </section>
-        )}
-        {started && <Header measures={measures} />}
-        {started && error && <p className="text-body text-danger">{error}</p>}
-        {measuring && <Measuring target={target} onCancel={measures.cancel} />}
-        {!measuring &&
-          result &&
-          (target.kind === "overview" ? (
-            <Overview result={result} notice={notice} onOpen={measures.open} />
-          ) : (
-            <Folder name={name} result={result} notice={notice} onOpen={measures.open} />
-          ))}
+    <main className="flex min-h-0 flex-1 flex-col">
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto flex min-h-full w-full max-w-clean flex-col gap-6 px-6 pt-8 pb-16">
+          {!started && !measuring && (
+            <section className="flex flex-1 flex-col items-center justify-center gap-5 text-center">
+              <h1 className="font-bold text-title">{strings.space.idle.title}</h1>
+              <p className="text-ink-muted text-note">{strings.space.idle.description}</p>
+              {error && <p className="text-body text-danger">{error}</p>}
+              <PillButton onClick={measures.measureAgain}>{strings.space.idle.action}</PillButton>
+            </section>
+          )}
+          {started && <Header measures={measures} />}
+          {started && error && <p className="text-body text-danger">{error}</p>}
+          {measuring && <Measuring target={target} onCancel={measures.cancel} />}
+          {!measuring &&
+            result &&
+            (target.kind === "overview" ? (
+              <Overview result={result} notice={notice} onOpen={measures.open} picker={trash.picker} />
+            ) : (
+              <Folder name={name} result={result} notice={notice} onOpen={measures.open} picker={trash.picker} />
+            ))}
+        </div>
       </div>
+      <TrashFooter trash={trash} />
     </main>
   );
 }

@@ -50,6 +50,8 @@ func main() {
 			Measurer: mole.NewMeasurer(bundle, home, slog.Default()),
 			Home:     home,
 			Reveal:   mygo.Shell.ShowItemInFolder,
+			Remover:  removal.OSRemover{Trash: mygo.Shell.TrashItem},
+			Logger:   slog.Default(),
 		}))
 		win := mygo.NewWindow(mygo.WindowOptions{
 			Title:           "Burrow",

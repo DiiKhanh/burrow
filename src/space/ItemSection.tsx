@@ -1,20 +1,29 @@
 import { useId } from "react";
+import { TriCheckbox } from "../clean/TriCheckbox";
 import { formatBytes } from "../format";
 import { Space, type SpaceItem, type Tag } from "../mygo";
 import { useSelectTab } from "../shell/activeTab";
 import { strings } from "../strings";
+import type { PickState } from "./picks";
+
+/** How rows read and change what is picked. */
+export type Picker = {
+  stateOf: (item: SpaceItem) => PickState;
+  onPick: (item: SpaceItem, on: boolean) => void;
+};
 
 type Props = {
   title: string;
   hint: string;
   items: readonly SpaceItem[];
   onOpen: (item: SpaceItem) => void;
+  picker: Picker;
   /** A line under an item's name, such as where a largest file lies; none when it returns "". */
   detail?: (item: SpaceItem) => string;
 };
 
 /** One list of Space items, each bar a share of the section's largest. */
-export function ItemSection({ title, hint, items, onOpen, detail }: Props) {
+export function ItemSection({ title, hint, items, onOpen, picker, detail }: Props) {
   const headingId = useId();
   const largest = Math.max(0, ...items.map((item) => item.bytes));
   return (
@@ -33,6 +42,7 @@ export function ItemSection({ title, hint, items, onOpen, detail }: Props) {
             share={largest > 0 ? item.bytes / largest : 0}
             detail={detail?.(item) ?? ""}
             onOpen={onOpen}
+            picker={picker}
           />
         ))}
       </ul>
@@ -40,14 +50,23 @@ export function ItemSection({ title, hint, items, onOpen, detail }: Props) {
   );
 }
 
-type RowProps = { item: SpaceItem; share: number; detail: string; onOpen: (item: SpaceItem) => void };
+type RowProps = {
+  item: SpaceItem;
+  share: number;
+  detail: string;
+  onOpen: (item: SpaceItem) => void;
+  picker: Picker;
+};
 
 /**
- * A folder's row opens it from anywhere but its tags and Reveal: the open
- * button's ::after covers the row, and the controls after it sit above. A
- * file's row holds the chevron's place so sizes line up.
+ * A folder's row opens it from anywhere but its controls: the open button's
+ * ::after covers the row, the checkbox rises above it, and the controls after
+ * it sit above. A file's row holds the chevron's place so sizes line up, and
+ * a row that cannot be picked holds the checkbox's so names do.
  */
-function ItemRow({ item, share, detail, onOpen }: RowProps) {
+function ItemRow({ item, share, detail, onOpen, picker }: RowProps) {
+  // Its "Clean handles this" tag already says the third reason.
+  const blocked = item.blocked === "clean-handles" ? null : item.blocked;
   const name = (
     <>
       <span className="block truncate font-medium text-note">{item.name}</span>
@@ -59,6 +78,7 @@ function ItemRow({ item, share, detail, onOpen }: RowProps) {
       <svg aria-hidden="true" className="absolute inset-0 size-full" preserveAspectRatio="none">
         <rect width={`${share * 100}%`} height="100%" className="fill-size opacity-10" />
       </svg>
+      <PickBox item={item} picker={picker} />
       {item.opens ? (
         <button
           type="button"
@@ -71,11 +91,12 @@ function ItemRow({ item, share, detail, onOpen }: RowProps) {
       ) : (
         <span className="relative min-w-0 flex-1">{name}</span>
       )}
-      {item.tags.length > 0 && (
+      {(item.tags.length > 0 || blocked) && (
         <span className="relative flex shrink-0 gap-1">
           {item.tags.map((tag) => (
             <TagLabel key={tag} tag={tag} />
           ))}
+          {blocked && <BlockedLabel reason={blocked} />}
         </span>
       )}
       <button
@@ -92,6 +113,27 @@ function ItemRow({ item, share, detail, onOpen }: RowProps) {
         {item.opens && strings.space.chevron}
       </span>
     </li>
+  );
+}
+
+/**
+ * The row's checkbox; a Space item a folder above covers shows ticked and
+ * stays put. One a Measure could not read has no size to promise in the
+ * button, whatever the engine would let through.
+ */
+function PickBox({ item, picker }: { item: SpaceItem; picker: Picker }) {
+  if (item.blocked || item.readState === "unavailable")
+    return <span aria-hidden="true" className="relative size-4.5 shrink-0" />;
+  const state = picker.stateOf(item);
+  return (
+    <span className="relative z-10 flex">
+      <TriCheckbox
+        label={strings.space.pick(item.name)}
+        state={state === "covered" ? "all" : state}
+        disabled={state === "covered"}
+        onChange={(on) => picker.onPick(item, on)}
+      />
+    </span>
   );
 }
 
@@ -117,6 +159,16 @@ const TAG_TONE: Record<Tag, string> = {
 };
 
 const TAG_SHAPE = "whitespace-nowrap rounded-full border px-1.5 py-px font-mono text-label uppercase";
+
+/** Why a row has no checkbox: outside Home or at its top level. */
+function BlockedLabel({ reason }: { reason: Exclude<SpaceItem["blocked"], "clean-handles" | null> }) {
+  const { label, why } = strings.space.blocked[reason];
+  return (
+    <span title={why} className={`${TAG_SHAPE} border-line-strong text-ink-muted`}>
+      {label}
+    </span>
+  );
+}
 
 /** A tag's label; "Clean handles this" is a link to the Clean tab, where that junk is removed. */
 function TagLabel({ tag }: { tag: Tag }) {

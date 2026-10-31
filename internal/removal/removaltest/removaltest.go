@@ -3,10 +3,13 @@
 package removaltest
 
 import (
+	"bufio"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
+	"testing"
 
 	"github.com/DiiKhanh/burrow/internal/removal"
 )
@@ -98,6 +101,33 @@ func freeName(dir, name string) string {
 		}
 		candidate = filepath.Join(dir, fmt.Sprintf("%s %d", name, n))
 	}
+}
+
+// History reads the runs logged in the history file under home, oldest first.
+func History(t *testing.T, home string) []removal.HistoryRun {
+	t.Helper()
+	file, err := os.Open(filepath.Join(home, filepath.FromSlash(removal.HistoryPath)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := file.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	var runs []removal.HistoryRun
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		var run removal.HistoryRun
+		if err := json.Unmarshal(scanner.Bytes(), &run); err != nil {
+			t.Fatalf("history line %q: %v", scanner.Text(), err)
+		}
+		runs = append(runs, run)
+	}
+	if err := scanner.Err(); err != nil {
+		t.Fatal(err)
+	}
+	return runs
 }
 
 // FakeProcesses stands in for the processes running on the Mac. Tests

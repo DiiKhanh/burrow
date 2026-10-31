@@ -95,15 +95,15 @@ describe("Space overview", () => {
     expect(rows("Insights")).toEqual([
       "Docker DataInsightReveal21.6 GB›",
       "Xcode SimulatorsInsightReveal3.07 GB›",
-      "Old Downloads (90d+)InsightReveal3.02 GB›",
+      "Old Downloads (90d+)InsightTop levelReveal3.02 GB›",
       "Homebrew CacheInsightClean handles thisReveal181 MB›",
       "System LogsInsightClean handles thisReveal2.1 MB›",
     ]);
     expect(rows("Locations")).toEqual([
-      "User LibraryReveal73.1 GB›",
-      "HomeReveal46.3 GB›",
-      "ApplicationsReveal19.7 GB›",
-      "System LibraryReveal6.83 GB›",
+      "User LibraryTop levelReveal73.1 GB›",
+      "HomeTop levelReveal46.3 GB›",
+      "ApplicationsReveal onlyReveal19.7 GB›",
+      "System LibraryReveal onlyReveal6.83 GB›",
     ]);
   });
 
@@ -170,11 +170,11 @@ describe("Space folders", () => {
       .getAllByRole("listitem")
       .map((row) => row.textContent);
     expect(rows).toEqual([
-      "ProjectsReveal21.4 GB›",
-      "MoviesReveal12.8 GB›",
-      "DownloadsReveal7.6 GB›",
-      "DocumentsReveal4.5 GB›",
-      "notes.txtReveal12 KB",
+      "ProjectsTop levelReveal21.4 GB›",
+      "MoviesTop levelReveal12.8 GB›",
+      "DownloadsTop levelReveal7.6 GB›",
+      "DocumentsTop levelReveal4.5 GB›",
+      "notes.txtTop levelReveal12 KB",
     ]);
     expect(screen.queryByRole("button", { name: "Open notes.txt" })).not.toBeInTheDocument();
   });
@@ -614,7 +614,7 @@ describe("Space with what a Measure could not read", () => {
     await openSpace();
     await act(async () => fakeGo.measure.last.resolve(unreadableOverview));
 
-    expect(rowsOf("Locations")[0]).toBe("User LibraryRevealPartly unreadable73.1 GB›");
+    expect(rowsOf("Locations")[0]).toBe("User LibraryTop levelRevealPartly unreadable73.1 GB›");
     expect(rowsOf("Insights").at(-1)).toBe("iOS BackupsInsightRevealProtected access unavailable");
   });
 
@@ -656,7 +656,7 @@ describe("Space with what a Measure could not read", () => {
 
     await openFolder(user, "System Library", "/Library");
 
-    expect(rowsOf("Contents")[0]).toBe("Application SupportRevealPartly unreadable4.1 GB›");
+    expect(rowsOf("Contents")[0]).toBe("Application SupportReveal onlyRevealPartly unreadable4.1 GB›");
     expect(screen.queryByRole("region", { name: "Full Disk Access" })).not.toBeInTheDocument();
   });
 });

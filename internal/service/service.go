@@ -134,6 +134,20 @@ func (s *Space) Reveal(id string) error {
 	return err
 }
 
+// MoveToTrash moves the picked Space items, by id, into the Trash, streaming
+// progress through updates. MyGo cancels ctx when the page closes updates.
+func (s *Space) MoveToTrash(ctx context.Context, ids []string, updates *mygo.Channel[space.TrashProgress]) (space.TrashReport, error) {
+	engine, err := s.currentEngine()
+	if err != nil {
+		return space.TrashReport{}, err
+	}
+	report, err := engine.MoveToTrash(ctx, ids, updates.Send)
+	if errors.Is(err, mygo.ErrChannelClosed) {
+		return space.TrashReport{}, fmt.Errorf("service: moving to Trash: %w", context.Canceled)
+	}
+	return report, err
+}
+
 func (s *Space) currentEngine() (*space.Engine, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

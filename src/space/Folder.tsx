@@ -1,14 +1,20 @@
 import type { ReactNode } from "react";
 import type { MeasureResult, MeasureTarget, SpaceItem } from "../mygo";
 import { strings } from "../strings";
-import { ItemSection } from "./ItemSection";
+import { ItemSection, type Picker } from "./ItemSection";
 import { Total } from "./Total";
 import { UnreadableNotice } from "./UnreadableNotice";
 
-type Props = { name: string; result: MeasureResult; notice: ReactNode; onOpen: (item: SpaceItem) => void };
+type Props = {
+  name: string;
+  result: MeasureResult;
+  notice: ReactNode;
+  onOpen: (item: SpaceItem) => void;
+  picker: Picker;
+};
 
 /** One measured folder: its total, what it holds, then its largest files anywhere below. */
-export function Folder({ name, result, notice, onOpen }: Props) {
+export function Folder({ name, result, notice, onOpen, picker }: Props) {
   const largestFiles = result.largestFiles ?? [];
   const { olderThanDays } = result.target;
   return (
@@ -22,6 +28,7 @@ export function Folder({ name, result, notice, onOpen }: Props) {
           hint={strings.space.count(result.items.length)}
           items={result.items}
           onOpen={onOpen}
+          picker={picker}
         />
       ) : (
         <p className="px-1 text-ink-muted text-note">
@@ -34,6 +41,7 @@ export function Folder({ name, result, notice, onOpen }: Props) {
           hint={strings.space.folder.largestFilesHint}
           items={largestFiles}
           onOpen={onOpen}
+          picker={picker}
           detail={(file) => relativeFolder(result.target.path ?? "", file.path)}
         />
       )}

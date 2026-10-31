@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -19,6 +20,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/DiiKhanh/burrow/internal/clean"
+	"github.com/DiiKhanh/burrow/internal/removal"
 )
 
 // ErrInvalidTarget means a Measure was asked for a target Space does not know.
@@ -96,6 +98,18 @@ const (
 	TagCleanHandles Tag = "clean-handles"
 )
 
+// BlockReason says why a Space item cannot be picked.
+type BlockReason string
+
+const (
+	// BlockedOutsideHome marks an item outside Home: Reveal only (ADR 0004).
+	BlockedOutsideHome BlockReason = "outside-home"
+	// BlockedTopLevel marks Home itself or an item directly in it.
+	BlockedTopLevel BlockReason = "top-level"
+	// BlockedCleanHandles marks an item in the folders Clean empties.
+	BlockedCleanHandles BlockReason = "clean-handles"
+)
+
 // ReadState says how much of a Space item a Measure could read.
 type ReadState string
 
@@ -113,6 +127,8 @@ const (
 // the same for its path, so a later Measure keeps it. Opens is the target
 // that measures a folder's contents, nil for anything else, including a
 // folder whose ReadState is unavailable: measuring it could only fail.
+// Blocked is why it cannot be picked, nil when it can: a hint for the UI,
+// which MoveToTrash checks again.
 type SpaceItem struct {
 	ID        string         `json:"id"`
 	Name      string         `json:"name"`
@@ -121,6 +137,7 @@ type SpaceItem struct {
 	IsDir     bool           `json:"isDir"`
 	ReadState ReadState      `json:"readState"`
 	Tags      []Tag          `json:"tags"`
+	Blocked   *BlockReason   `json:"blocked"`
 	Opens     *MeasureTarget `json:"opens"`
 }
 
@@ -172,29 +189,45 @@ type Engine struct {
 	measurer Measurer
 	home     string
 	reveal   func(path string)
+	remover  removal.Remover
+	logger   *slog.Logger
 
 	mu sync.Mutex
 	// current holds, per target measured this session, the latest result's
 	// Space items by id (ADR 0004): Measure again replaces its target's
 	// ids, while those of other folders stay. It lives in memory only.
-	current map[MeasureTarget]map[string]string
+	current map[MeasureTarget]listing
+}
+
+// listing is what the latest Measure of one target listed, as of measuredAt.
+type listing struct {
+	measuredAt time.Time
+	items      map[string]SpaceItem
 }
 
 // Options configures an Engine. Reveal shows a path in Finder: the app
-// passes mygo.Shell.ShowItemInFolder.
+// passes mygo.Shell.ShowItemInFolder. Logger defaults to slog.Default.
 type Options struct {
 	Measurer Measurer
 	Home     string
 	Reveal   func(path string)
+	Remover  removal.Remover
+	Logger   *slog.Logger
 }
 
 // NewEngine constructs an Engine from its adapters.
 func NewEngine(options Options) *Engine {
+	logger := options.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
 	return &Engine{
 		measurer: options.Measurer,
 		home:     filepath.Clean(options.Home),
 		reveal:   options.Reveal,
-		current:  make(map[MeasureTarget]map[string]string),
+		remover:  options.Remover,
+		logger:   logger,
+		current:  make(map[MeasureTarget]listing),
 	}
 }
 
@@ -244,7 +277,7 @@ func (e *Engine) Measure(ctx context.Context, target MeasureTarget) (MeasureResu
 	slices.SortStableFunc(result.Items, largestFirst)
 	slices.SortStableFunc(result.Insights, largestFirst)
 	slices.SortStableFunc(result.LargestFiles, largestFirst)
-	e.remember(target, result.Items, result.Insights, result.LargestFiles)
+	e.remember(target, measuredAt, result.Items, result.Insights, result.LargestFiles)
 	return result, nil
 }
 
@@ -307,6 +340,7 @@ func (e *Engine) spaceItem(measured MeasuredItem) SpaceItem {
 		IsDir:     measured.IsDir,
 		ReadState: measured.ReadState,
 		Tags:      tags,
+		Blocked:   e.blocked(measured.Path),
 	}
 }
 
@@ -314,11 +348,34 @@ func (e *Engine) spaceItem(measured MeasuredItem) SpaceItem {
 // labels the path as measured, without resolving symlinks: a label, not a
 // safety check.
 func (e *Engine) cleanHandles(path string) bool {
+	rel, inHome := e.relToHome(path)
+	return inHome && clean.InGround(rel)
+}
+
+// blocked is why path, as measured, cannot be picked; nil when it can. The
+// Trash lies directly in Home, but the reason that helps is where it goes.
+func (e *Engine) blocked(path string) *BlockReason {
+	rel, inHome := e.relToHome(path)
+	switch {
+	case !inHome:
+		return ptr(BlockedOutsideHome)
+	case clean.InGround(rel):
+		return ptr(BlockedCleanHandles)
+	case !belowFirstLevel(rel):
+		return ptr(BlockedTopLevel)
+	default:
+		return nil
+	}
+}
+
+// relToHome is path relative to Home, slash-separated, "." for Home itself.
+// It is false for a path outside Home.
+func (e *Engine) relToHome(path string) (string, bool) {
 	rel, err := filepath.Rel(e.home, path)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, "../") {
-		return false
+		return "", false
 	}
-	return clean.InGround(filepath.ToSlash(rel))
+	return filepath.ToSlash(rel), true
 }
 
 // Reveal shows the Space item id in Finder. It takes an id a current result
@@ -336,29 +393,40 @@ func (e *Engine) Reveal(id string) error {
 	return nil
 }
 
-func (e *Engine) remember(target MeasureTarget, lists ...[]SpaceItem) {
-	paths := make(map[string]string)
+func (e *Engine) remember(target MeasureTarget, measuredAt time.Time, lists ...[]SpaceItem) {
+	items := make(map[string]SpaceItem)
 	for _, list := range lists {
 		for _, item := range list {
-			paths[item.ID] = item.Path
+			items[item.ID] = item
 		}
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	e.current[target] = paths
+	e.current[target] = listing{measuredAt: measuredAt, items: items}
 }
 
 // measuredPath is the path of the Space item id, if a current result of
 // this session lists it.
 func (e *Engine) measuredPath(id string) (string, bool) {
+	item, ok := e.measuredItem(id)
+	return item.Path, ok
+}
+
+// measuredItem is the Space item id as last measured, if a current result of
+// this session lists it. Several may, each of its own target.
+func (e *Engine) measuredItem(id string) (SpaceItem, bool) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	for _, paths := range e.current {
-		if path, ok := paths[id]; ok {
-			return path, true
+	var latest SpaceItem
+	var latestAt time.Time
+	found := false
+	for _, listed := range e.current {
+		item, ok := listed.items[id]
+		if ok && (!found || listed.measuredAt.After(latestAt)) {
+			latest, latestAt, found = item, listed.measuredAt, true
 		}
 	}
-	return "", false
+	return latest, found
 }
 
 func largestFirst(a, b SpaceItem) int {
@@ -369,3 +437,5 @@ func itemID(path string) string {
 	sum := sha256.Sum256([]byte(path))
 	return hex.EncodeToString(sum[:])
 }
+
+func ptr[T any](v T) *T { return &v }

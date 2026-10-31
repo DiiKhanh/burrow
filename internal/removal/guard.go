@@ -6,16 +6,17 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"unicode"
 	"unicode/utf8"
 )
 
-// protectedPaths are Home-relative folders Burrow never removes, nor anything
-// inside or above them. Mole's own critical-deletion roots all lie outside
-// Home or are Home itself, which the guard already refuses.
-var protectedPaths = []string{
+// personalFolders are the first-level folders that hold what the user keeps
+// by hand. Burrow never removes one, nor, unless the user picked it, anything
+// inside (ADR 0004).
+var personalFolders = []string{
 	"Desktop",
 	"Documents",
 	"Downloads",
@@ -23,6 +24,12 @@ var protectedPaths = []string{
 	"Music",
 	"Pictures",
 	"Public",
+}
+
+// protectedPaths are Home-relative folders Burrow never removes, nor anything
+// inside or above them. Mole's own critical-deletion roots all lie outside
+// Home or are Home itself, which the guard already refuses.
+var protectedPaths = []string{
 	"Library/Mobile Documents",
 	"Library/CloudStorage",
 	"Library/Keychains",
@@ -42,6 +49,8 @@ type Guard struct {
 	// realHome is home with every symlink resolved.
 	realHome string
 	rules    []Rule
+	// insidePersonal lets through what lies inside a personal folder.
+	insidePersonal bool
 }
 
 // Rule is a check a caller adds to its Guard on top of the shared ones. It
@@ -62,6 +71,18 @@ func NewGuard(home string, rules ...Rule) (*Guard, error) {
 	return &Guard{home: home, realHome: realHome, rules: rules}, nil
 }
 
+// NewPickedGuard is NewGuard for items the user picked by hand and that go to
+// the Trash, where they can be put back: what lies inside a personal folder
+// passes. The folder itself and every other protected path still do not.
+func NewPickedGuard(home string, rules ...Rule) (*Guard, error) {
+	guard, err := NewGuard(home, rules...)
+	if err != nil {
+		return nil, err
+	}
+	guard.insidePersonal = true
+	return guard, nil
+}
+
 // Check returns false with the reason when path must be skipped.
 func (g *Guard) Check(path string) (SkipReason, bool) {
 	if !filepath.IsAbs(path) || hasDotDot(path) || hasControl(path) {
@@ -70,15 +91,20 @@ func (g *Guard) Check(path string) (SkipReason, bool) {
 	if !g.allows(g.home, path) {
 		return Protected, false
 	}
+	if _, err := os.Lstat(path); err != nil {
+		return checkFailure(err), false
+	}
 	resolved, err := filepath.EvalSymlinks(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		// Lstat found path, so it is a dangling symlink, not gone: where it
+		// points cannot be checked.
+		return Protected, false
+	}
 	if err != nil {
 		return checkFailure(err), false
 	}
 	if !g.allows(g.realHome, resolved) {
 		return Protected, false
-	}
-	if _, err := os.Lstat(path); err != nil {
-		return checkFailure(err), false
 	}
 	return "", true
 }
@@ -107,7 +133,7 @@ func (g *Guard) allows(home, path string) bool {
 		return false
 	}
 	rel = filepath.ToSlash(rel)
-	if isProtected(rel) {
+	if g.isProtected(rel) {
 		return false
 	}
 	for _, rule := range g.rules {
@@ -118,13 +144,24 @@ func (g *Guard) allows(home, path string) bool {
 	return true
 }
 
-// isProtected reports whether rel is a protected path, or lies inside or
-// above one. APFS ignores case, so the comparison does too.
-func isProtected(rel string) bool {
+// isProtected reports whether rel may never be removed. APFS ignores case,
+// so the comparison does too.
+func (g *Guard) isProtected(rel string) bool {
 	rel = strings.ToLower(rel)
-	for _, protected := range protectedPaths {
-		protected = strings.ToLower(protected)
-		if rel == protected || strings.HasPrefix(rel, protected+"/") || strings.HasPrefix(protected, rel+"/") {
+	if g.insidePersonal {
+		return covers(protectedPaths, rel) || slices.ContainsFunc(personalFolders, func(folder string) bool {
+			return strings.ToLower(folder) == rel
+		})
+	}
+	return covers(protectedPaths, rel) || covers(personalFolders, rel)
+}
+
+// covers reports whether rel, in lower case, is one of paths, or lies inside
+// or above one.
+func covers(paths []string, rel string) bool {
+	for _, path := range paths {
+		path = strings.ToLower(path)
+		if rel == path || strings.HasPrefix(rel, path+"/") || strings.HasPrefix(path, rel+"/") {
 			return true
 		}
 	}

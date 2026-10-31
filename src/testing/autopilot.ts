@@ -1,9 +1,9 @@
 // Settles the fake client's calls by the page's URL scenario, so Playwright
 // gets whole Scan and Clean runs without driving each step. Only
 // `vite --mode fake` installs it; Vitest drives `fakeGo` itself.
-import type { CleanProgress, CleanReport, LockedGroup, ScanProgress, ScanResult } from "../mygo";
-import { folderAt, overview, unreadableOverview } from "./measures";
-import type { CleanCall, FakeGo, MeasureCall, ScanCall } from "./mygo.fake";
+import type { CleanProgress, CleanReport, LockedGroup, ScanProgress, ScanResult, TrashReport } from "../mygo";
+import { fakeItems, folderAt, overview, unreadableOverview } from "./measures";
+import type { CleanCall, FakeGo, MeasureCall, ScanCall, TrashCall } from "./mygo.fake";
 import { fullScan, longScan, unreadableScan } from "./scans";
 
 /** Scan results by the page's `?scan=` scenario; any other value gets fullScan. */
@@ -44,7 +44,7 @@ function lockedBy(browsers: Browsers): LockedGroup[] {
 }
 
 /** Waits ms, then reports whether the call is still running; a cancelled one ends as Go ends it. */
-async function stillRunning(call: ScanCall | CleanCall | MeasureCall, ms: number): Promise<boolean> {
+async function stillRunning(call: ScanCall | CleanCall | MeasureCall | TrashCall, ms: number): Promise<boolean> {
   await new Promise((done) => setTimeout(done, ms));
   if (call.cancelled) call.reject(new Error("fake: cancelled"));
   return !call.cancelled;
@@ -132,13 +132,43 @@ async function runMeasure(call: MeasureCall, scenario: string | null) {
   call.resolve({ ...result, measuredAt });
 }
 
+/**
+ * Moves the picked Space items, one every 20 ms. By `?trash=`: `skipped`
+ * skips the first item as in use, `running` stops after the first item and
+ * never ends, `failed` fails before moving anything.
+ */
+async function runTrash(call: TrashCall, scenario: string | null) {
+  if (scenario === "failed") {
+    call.reject(new Error("fake: Move to Trash failed"));
+    return;
+  }
+  const items = fakeItems();
+  let report: TrashReport = { items: [], movedBytes: 0 };
+  for (const id of call.ids) {
+    if (!(await stillRunning(call, 20))) return;
+    const item = items.get(id);
+    const name = item?.name ?? "";
+    const path = item?.path ?? "";
+    const bytes = item?.bytes ?? 0;
+    const skipReason = scenario === "skipped" && report.items.length === 0 ? "in_use" : null;
+    report = {
+      items: [...report.items, { id, name, path, bytes, skipReason }],
+      movedBytes: report.movedBytes + (skipReason ? 0 : bytes),
+    };
+    call.emit({ total: call.ids.length, processed: report.items.length, movedBytes: report.movedBytes });
+    if (scenario === "running") return;
+  }
+  call.resolve(report);
+}
+
 function scanFor(scenario: string | null): ScanResult {
   return SCANS[scenario ?? ""] ?? fullScan;
 }
 
 /**
  * Settles every call by the scenarios in search, e.g. `?scan=unreadable&settings=fallback`.
- * `?measure=` picks how a Space Measure runs (see runMeasure).
+ * `?measure=` picks how a Space Measure runs (see runMeasure), and `?trash=`
+ * how its Move to Trash does (see runTrash).
  * `?settings=` picks what System Settings opens: `fallback` only Privacy &
  * Security, `refused` nothing. `?browsers=` lists the open browsers, which
  * Playwright quits through `window.burrowBrowsers`.
@@ -156,6 +186,7 @@ export function installAutopilot(go: FakeGo, search: string) {
   go.clean.onCall((call) => void runClean(call, scanFor(scan), scenarios.get("clean"), browsers));
   go.locked.onCall((call) => call.resolve(lockedBy(browsers)));
   go.measure.onCall((call) => void runMeasure(call, scenarios.get("measure")));
+  go.moveToTrash.onCall((call) => void runTrash(call, scenarios.get("trash")));
   go.reveal.onCall((call) => call.resolve());
   go.privacy.onCall((call) => {
     const settings = scenarios.get("settings");
