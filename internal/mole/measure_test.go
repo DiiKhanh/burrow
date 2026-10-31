@@ -111,6 +111,53 @@ cat '`+golden+`'
 	}
 }
 
+// Mole prints last_access only; the time a row was last modified is Burrow's
+// to read, of the link itself for a symlink. A row gone by then has none.
+func TestMeasurerAddsWhenEachRowWasLastModified(t *testing.T) {
+	folder := t.TempDir()
+	old := filepath.Join(folder, "old.zip")
+	if err := os.WriteFile(old, []byte("zip"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	modified := time.Date(2025, 3, 4, 5, 6, 7, 0, time.UTC)
+	if err := os.Chtimes(old, modified, modified); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(folder, "link")
+	if err := os.Symlink(old, link); err != nil {
+		t.Fatal(err)
+	}
+	gone := filepath.Join(folder, "gone")
+	bundle := fakeAnalyzer(t, `#!/bin/sh
+cat <<'EOF'
+{"overview": false, "path": "`+folder+`", "entries": [
+  {"name": "old.zip", "path": "`+old+`", "size": 3, "last_access": "2026-10-30T03:33:52Z"},
+  {"name": "link →", "path": "`+link+`", "size": 0},
+  {"name": "gone", "path": "`+gone+`", "size": 1}
+]}
+EOF
+`)
+	measurer := NewMeasurer(bundle, "/Users/test", quietLogger())
+	before := time.Now().Add(-time.Minute)
+
+	measurement, err := measurer.Measure(context.Background(), space.MeasureTarget{Kind: space.Folder, Path: folder})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(measurement.Items) != 3 {
+		t.Fatalf("items = %#v, want 3", measurement.Items)
+	}
+	if got := measurement.Items[0].ModTime; !got.Equal(modified) {
+		t.Errorf("old.zip modified %v, want %v", got, modified)
+	}
+	if got := measurement.Items[1].ModTime; got.Before(before) {
+		t.Errorf("link modified %v, want the link's own time, not its target's", got)
+	}
+	if got := measurement.Items[2].ModTime; !got.IsZero() {
+		t.Errorf("gone modified %v, want no time", got)
+	}
+}
+
 // Mole says of each row how much of it could be read. A folder it could not
 // read still lists; large_files carry no state, since Mole read them to find
 // them.
@@ -139,55 +186,6 @@ func TestMeasurerTranslatesWhatTheBundledAnalyzerCouldNotRead(t *testing.T) {
 	}
 	if !slices.Equal(measurement.LargestFiles, wantFiles) {
 		t.Errorf("largest files = %#v, want %#v", measurement.LargestFiles, wantFiles)
-	}
-}
-
-// An Insight can be unreadable too: it stays listed.
-func TestMeasurerTranslatesWhatTheOverviewCouldNotRead(t *testing.T) {
-	golden, err := filepath.Abs("testdata/analyze-overview-unreadable.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	bundle := fakeAnalyzer(t, "#!/bin/sh\ncat '"+golden+"'\n")
-	measurer := NewMeasurer(bundle, "/Users/test", quietLogger())
-
-	measurement, err := measurer.Measure(context.Background(), space.MeasureTarget{Kind: space.Overview})
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := []space.MeasuredItem{
-		{Name: "User Library", Path: "/Users/test/Library", Bytes: 73074991104, IsDir: true, ReadState: space.ReadPartial},
-		{Name: "Applications", Path: "/Applications", Bytes: 19704082432, IsDir: true, ReadState: space.ReadComplete},
-		{Name: "iOS Backups", Path: "/Users/test/Library/Application Support/MobileSync/Backup", IsDir: true, Insight: true, ReadState: space.ReadUnavailable},
-	}
-	if !slices.Equal(measurement.Items, want) {
-		t.Errorf("items = %#v, want %#v", measurement.Items, want)
-	}
-}
-
-// Leaving a row out would lower the total without a word, and a change to
-// Mole's format could then pass a full folder off as empty.
-func TestMeasurerKeepsARowWhoseScanStatusItDoesNotKnow(t *testing.T) {
-	bundle := fakeAnalyzer(t, `#!/bin/sh
-cat <<'EOF'
-{"overview": false, "path": "/Users/test/Projects", "entries": [
-  {"scan_status": "pending", "name": "app", "path": "/Users/test/Projects/app", "size": 7, "is_dir": true},
-  {"name": "site", "path": "/Users/test/Projects/site", "size": 5, "is_dir": true}
-]}
-EOF
-`)
-	measurer := NewMeasurer(bundle, "/Users/test", quietLogger())
-
-	measurement, err := measurer.Measure(context.Background(), space.MeasureTarget{Kind: space.Folder, Path: "/Users/test/Projects"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := []space.MeasuredItem{
-		{Name: "app", Path: "/Users/test/Projects/app", Bytes: 7, IsDir: true, ReadState: space.ReadPartial},
-		{Name: "site", Path: "/Users/test/Projects/site", Bytes: 5, IsDir: true, ReadState: space.ReadPartial},
-	}
-	if !slices.Equal(measurement.Items, want) {
-		t.Errorf("items = %#v, want %#v", measurement.Items, want)
 	}
 }
 

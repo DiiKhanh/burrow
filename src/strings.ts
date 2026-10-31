@@ -280,8 +280,11 @@ export const strings = {
     folder: {
       /** The unit after the big number: "GB in this folder". */
       total: (unit: string) => `${unit} in this folder`,
+      totalWithoutLibrary: (unit: string) => `${unit} in this folder, without Library`,
+      totalOlderThan: (unit: string, days: number) => `${unit} older than ${days} days`,
       contents: "Contents",
       empty: "This folder is empty.",
+      emptyOlderThan: (days: number) => `Nothing here is older than ${days} days.`,
       largestFiles: (name: string) => `Largest files in ${name}`,
       largestFilesHint: "Anywhere in this folder",
     },

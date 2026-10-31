@@ -164,11 +164,17 @@ export interface MeasureResult {
 
 /**
  * MeasureTarget says what one Measure measures. Each Space item that opens
- * carries the target the UI sends back. Path is set for a Folder only.
+ * carries the target the UI sends back. Path is set for a Folder only, as
+ * are the two narrowings an overview row needs for the total inside to match
+ * it: ExcludeLibrary leaves ~/Library out of Home, and a positive
+ * OlderThanDays lists only the items, hidden ones aside, not modified for
+ * that many days.
  */
 export interface MeasureTarget {
   kind: TargetKind;
   path?: string;
+  excludeLibrary?: boolean;
+  olderThanDays?: number;
 }
 
 /** Memory is physical and swap memory usage. */

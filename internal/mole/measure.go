@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/DiiKhanh/burrow/internal/space"
 )
@@ -153,6 +154,7 @@ func (m *Measurer) folder(folder string, entries, largeFiles []analyzeEntry) spa
 			IsDir:       entry.IsDir && !isLink,
 			ReadState:   m.readState(entry),
 			Regenerable: entry.Cleanable && !isLink,
+			ModTime:     m.modTime(entry.Path),
 		})
 	}
 	// Mole may find large files through Spotlight, which is not bound to
@@ -170,6 +172,17 @@ func (m *Measurer) folder(folder string, entries, largeFiles []analyzeEntry) spa
 		files = append(files, space.MeasuredItem{Name: filepath.Base(file.Path), Path: file.Path, Bytes: file.Size, ReadState: space.ReadComplete})
 	}
 	return space.Measurement{Items: items, LargestFiles: files}
+}
+
+// modTime is when path was last modified, zero with a warning when it cannot
+// be read. Mole prints only last_access; lstat keeps a symlink's own time.
+func (m *Measurer) modTime(path string) time.Time {
+	info, err := os.Lstat(path)
+	if err != nil {
+		m.logger.Warn("reading when a disk analyzer entry was modified", "path", path, "error", err)
+		return time.Time{}
+	}
+	return info.ModTime()
 }
 
 // readState is how much of a row of entries Mole read. A status Burrow does

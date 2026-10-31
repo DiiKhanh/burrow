@@ -2,7 +2,15 @@ import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { App } from "../App";
-import { folderAt, homeFolder, libraryFolder, overview, unreadableOverview } from "../testing/measures";
+import {
+  downloadsFolder,
+  folderAt,
+  homeFolder,
+  libraryFolder,
+  oldDownloadsFolder,
+  overview,
+  unreadableOverview,
+} from "../testing/measures";
 import { fakeGo } from "../testing/mygo.fake";
 
 async function openSpace() {
@@ -91,7 +99,7 @@ describe("Space overview", () => {
     ]);
     expect(rows("Locations")).toEqual([
       "User LibraryReveal73.1 GB›",
-      "HomeReveal46.4 GB›",
+      "HomeReveal46.3 GB›",
       "ApplicationsReveal19.7 GB›",
       "System LibraryReveal6.83 GB›",
     ]);
@@ -122,7 +130,16 @@ async function openOverview() {
 async function openFolder(user: ReturnType<typeof userEvent.setup>, name: string, path: string) {
   await user.click(screen.getByRole("button", { name: `Open ${name}` }));
   expect(fakeGo.measure.last.target).toEqual({ kind: "folder", path });
-  await act(async () => fakeGo.measure.last.resolve(folderAt(path)));
+  await act(async () => fakeGo.measure.last.resolve(folderAt({ kind: "folder", path })));
+}
+
+const HOME_TARGET = { kind: "folder", path: HOME, excludeLibrary: true };
+
+/** Opens Home from the overview and settles its Measure. */
+async function openHome(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole("button", { name: "Open Home" }));
+  expect(fakeGo.measure.last.target).toEqual(HOME_TARGET);
+  await act(async () => fakeGo.measure.last.resolve(homeFolder));
 }
 
 function crumbs() {
@@ -137,17 +154,16 @@ describe("Space folders", () => {
 
     await user.click(screen.getByRole("button", { name: "Open Home" }));
 
-    expect(fakeGo.measure.last.target).toEqual({ kind: "folder", path: HOME });
+    expect(fakeGo.measure.last.target).toEqual(HOME_TARGET);
     const progress = screen.getByRole("status", { name: "Measure progress" });
     expect(within(progress).getByText(HOME)).toBeVisible();
   });
 
   it("lists the folder's contents with its total, largest first", async () => {
     const user = await openOverview();
-    await openFolder(user, "Home", HOME);
+    await openHome(user);
 
     expect(screen.getByText("46.3")).toBeVisible();
-    expect(screen.getByText("GB in this folder")).toBeVisible();
     const rows = within(screen.getByRole("region", { name: "Contents" }))
       .getAllByRole("listitem")
       .map((row) => row.textContent);
@@ -163,7 +179,7 @@ describe("Space folders", () => {
 
   it("shows the trail from This Mac to the folder, current last", async () => {
     const user = await openOverview();
-    await openFolder(user, "Home", HOME);
+    await openHome(user);
     await openFolder(user, "Projects", `${HOME}/Projects`);
 
     expect(crumbs()).toEqual(["This Mac", "Home", "Projects"]);
@@ -175,7 +191,7 @@ describe("Space folders", () => {
 
   it("goes back up any number of levels without measuring again", async () => {
     const user = await openOverview();
-    await openFolder(user, "Home", HOME);
+    await openHome(user);
     await openFolder(user, "Projects", `${HOME}/Projects`);
 
     await user.click(screen.getByRole("button", { name: "This Mac" }));
@@ -189,11 +205,11 @@ describe("Space folders", () => {
 
   it("measures the folder on screen again and shows the new result", async () => {
     const user = await openOverview();
-    await openFolder(user, "Home", HOME);
+    await openHome(user);
 
     await user.click(screen.getByRole("button", { name: "Measure again" }));
     expect(fakeGo.measure.calls).toHaveLength(3);
-    expect(fakeGo.measure.last.target).toEqual({ kind: "folder", path: HOME });
+    expect(fakeGo.measure.last.target).toEqual(HOME_TARGET);
     expect(screen.getByRole("status", { name: "Measure progress" })).toBeVisible();
 
     await act(async () =>
@@ -228,7 +244,7 @@ describe("Space folders", () => {
 
   it("keeps the last result when Measure again is cancelled", async () => {
     const user = await openOverview();
-    await openFolder(user, "Home", HOME);
+    await openHome(user);
     await user.click(screen.getByRole("button", { name: "Measure again" }));
 
     await user.click(screen.getByRole("button", { name: "Cancel" }));
@@ -257,15 +273,73 @@ describe("Space folders", () => {
     expect(screen.getByText("Measure could not finish. Try again.")).toBeVisible();
     expect(crumbs()).toEqual(["This Mac", "Home"]);
     await user.click(screen.getByRole("button", { name: "Measure again" }));
-    expect(fakeGo.measure.last.target).toEqual({ kind: "folder", path: HOME });
+    expect(fakeGo.measure.last.target).toEqual(HOME_TARGET);
   });
 
   it("says an empty folder is empty", async () => {
     const user = await openOverview();
     await user.click(screen.getByRole("button", { name: "Open Applications" }));
-    await act(async () => fakeGo.measure.last.resolve(folderAt("/Applications")));
+    await act(async () => fakeGo.measure.last.resolve(folderAt({ kind: "folder", path: "/Applications" })));
 
     expect(screen.getByText("This folder is empty.")).toBeVisible();
+  });
+});
+
+describe("Space rows that count part of a folder", () => {
+  const OLD_TARGET = { kind: "folder", path: `${HOME}/Downloads`, olderThanDays: 90 } as const;
+
+  it("opens Home without Library, with the total of its row", async () => {
+    const user = await openOverview();
+
+    await openHome(user);
+
+    expect(screen.getByText("46.3")).toBeVisible();
+    expect(screen.getByText("GB in this folder, without Library")).toBeVisible();
+  });
+
+  it("opens Old Downloads as what is old, with the total of its row", async () => {
+    const user = await openOverview();
+
+    await user.click(screen.getByRole("button", { name: "Open Old Downloads (90d+)" }));
+    expect(fakeGo.measure.last.target).toEqual(OLD_TARGET);
+    await act(async () => fakeGo.measure.last.resolve(oldDownloadsFolder));
+
+    expect(screen.getByText("3.02")).toBeVisible();
+    expect(screen.getByText("GB older than 90 days")).toBeVisible();
+    expect(rowsOf("Contents")).toEqual([
+      "Xcode_16.xipReveal2.1 GB",
+      "InstallersReveal900 MB›",
+      "invoice.pdfReveal20 MB",
+    ]);
+  });
+
+  it("does not call Downloads empty when nothing in it is old", async () => {
+    const user = await openOverview();
+
+    await user.click(screen.getByRole("button", { name: "Open Old Downloads (90d+)" }));
+    await act(async () => fakeGo.measure.last.resolve({ ...oldDownloadsFolder, items: [], totalBytes: 0 }));
+
+    expect(screen.getByText("Nothing here is older than 90 days.")).toBeVisible();
+    expect(screen.queryByText("This folder is empty.")).not.toBeInTheDocument();
+  });
+
+  it("keeps Old Downloads and the whole of Downloads as two results", async () => {
+    const user = await openOverview();
+    await user.click(screen.getByRole("button", { name: "Open Old Downloads (90d+)" }));
+    await act(async () => fakeGo.measure.last.resolve(oldDownloadsFolder));
+    await user.click(screen.getByRole("button", { name: "This Mac" }));
+    await openHome(user);
+
+    await user.click(screen.getByRole("button", { name: "Open Downloads" }));
+    expect(fakeGo.measure.last.target).toEqual({ kind: "folder", path: `${HOME}/Downloads` });
+    await act(async () => fakeGo.measure.last.resolve(downloadsFolder));
+    expect(screen.getByText("GB in this folder")).toBeVisible();
+
+    const measured = fakeGo.measure.calls.length;
+    await user.click(screen.getByRole("button", { name: "This Mac" }));
+    await user.click(screen.getByRole("button", { name: "Open Old Downloads (90d+)" }));
+    expect(screen.getByText("GB older than 90 days")).toBeVisible();
+    expect(fakeGo.measure.calls).toHaveLength(measured);
   });
 });
 
@@ -278,7 +352,7 @@ function rowsOf(region: string) {
 describe("Space largest files", () => {
   it("lists the largest files anywhere in the folder, with the folder each lies in", async () => {
     const user = await openOverview();
-    await openFolder(user, "Home", HOME);
+    await openHome(user);
 
     expect(screen.getAllByRole("region")).toEqual([
       screen.getByRole("region", { name: "Contents" }),
@@ -293,7 +367,7 @@ describe("Space largest files", () => {
 
   it("names the folder the largest files lie in", async () => {
     const user = await openOverview();
-    await openFolder(user, "Home", HOME);
+    await openHome(user);
     await openFolder(user, "Projects", `${HOME}/Projects`);
 
     expect(rowsOf("Largest files in Projects")).toEqual([
@@ -307,7 +381,7 @@ describe("Space largest files", () => {
     expect(screen.queryByRole("region", { name: /^Largest files/ })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Open Applications" }));
-    await act(async () => fakeGo.measure.last.resolve(folderAt("/Applications")));
+    await act(async () => fakeGo.measure.last.resolve(folderAt({ kind: "folder", path: "/Applications" })));
     expect(screen.queryByRole("region", { name: /^Largest files/ })).not.toBeInTheDocument();
   });
 });
@@ -315,7 +389,7 @@ describe("Space largest files", () => {
 describe("Space tags", () => {
   it("labels folders their tools make again Regenerable", async () => {
     const user = await openOverview();
-    await openFolder(user, "Home", HOME);
+    await openHome(user);
     await openFolder(user, "Projects", `${HOME}/Projects`);
     await openFolder(user, "burrow", `${HOME}/Projects/burrow`);
 
@@ -355,7 +429,7 @@ describe("Space Reveal in Finder", () => {
 
   it("reveals a largest file", async () => {
     const user = await openOverview();
-    await openFolder(user, "Home", HOME);
+    await openHome(user);
 
     await user.click(screen.getByRole("button", { name: "Reveal Trip 2025.mov in Finder" }));
 

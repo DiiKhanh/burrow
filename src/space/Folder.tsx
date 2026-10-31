@@ -1,4 +1,4 @@
-import type { MeasureResult, SpaceItem } from "../mygo";
+import type { MeasureResult, MeasureTarget, SpaceItem } from "../mygo";
 import { strings } from "../strings";
 import { ItemSection } from "./ItemSection";
 import { Total } from "./Total";
@@ -9,9 +9,10 @@ type Props = { name: string; result: MeasureResult; onOpen: (item: SpaceItem) =>
 /** One measured folder: its total, what it holds, then its largest files anywhere below. */
 export function Folder({ name, result, onOpen }: Props) {
   const largestFiles = result.largestFiles ?? [];
+  const { olderThanDays } = result.target;
   return (
     <>
-      <Total bytes={result.totalBytes} label={strings.space.folder.total} items={result.items} />
+      <Total bytes={result.totalBytes} label={totalLabel(result.target)} items={result.items} />
       <UnreadableNotice result={result} />
       {result.items.length > 0 ? (
         <ItemSection
@@ -21,7 +22,9 @@ export function Folder({ name, result, onOpen }: Props) {
           onOpen={onOpen}
         />
       ) : (
-        <p className="px-1 text-ink-muted text-note">{strings.space.folder.empty}</p>
+        <p className="px-1 text-ink-muted text-note">
+          {olderThanDays ? strings.space.folder.emptyOlderThan(olderThanDays) : strings.space.folder.empty}
+        </p>
       )}
       {largestFiles.length > 0 && (
         <ItemSection
@@ -34,6 +37,12 @@ export function Folder({ name, result, onOpen }: Props) {
       )}
     </>
   );
+}
+
+/** What the big number counts: a target from the overview may list only part of its folder. */
+function totalLabel({ excludeLibrary, olderThanDays }: MeasureTarget): (unit: string) => string {
+  if (olderThanDays) return (unit) => strings.space.folder.totalOlderThan(unit, olderThanDays);
+  return excludeLibrary ? strings.space.folder.totalWithoutLibrary : strings.space.folder.total;
 }
 
 /** The folder path lies in, relative to folder: "Projects/app" for folder/Projects/app/file; "" when directly in it. */

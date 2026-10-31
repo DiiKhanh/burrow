@@ -125,7 +125,7 @@ async function runMeasure(call: MeasureCall, scenario: string | null) {
     return;
   }
   if (!(await stillRunning(call, 30)) || scenario === "running") return;
-  if (call.target.kind === "folder") call.resolve(folderAt(call.target.path ?? ""));
+  if (call.target.kind === "folder") call.resolve(folderAt(call.target));
   else call.resolve(scenario === "unreadable" ? unreadableOverview : overview);
 }
 

@@ -243,11 +243,15 @@ func TestMeasureRefusesATargetItCannotTrust(t *testing.T) {
 		{name: "control character", target: MeasureTarget{Kind: Folder, Path: home + "/Pro\njects"}},
 		{name: "invalid UTF-8", target: MeasureTarget{Kind: Folder, Path: home + "/\xff"}},
 		{name: "overview with a path", target: MeasureTarget{Kind: Overview, Path: home}},
+		{name: "overview without Library", target: MeasureTarget{Kind: Overview, ExcludeLibrary: true}},
+		{name: "overview of the old part", target: MeasureTarget{Kind: Overview, OlderThanDays: 90}},
+		{name: "without Library outside Home", target: MeasureTarget{Kind: Folder, Path: home + "/Projects", ExcludeLibrary: true}},
+		{name: "negative age", target: MeasureTarget{Kind: Folder, Path: home + "/Downloads", OlderThanDays: -1}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			measurer := &fakeMeasurer{measurement: folderMeasurement()}
-			engine := NewEngine(Options{Measurer: measurer})
+			engine := NewEngine(Options{Measurer: measurer, Home: home})
 
 			_, err := engine.Measure(context.Background(), test.target)
 			if !errors.Is(err, ErrInvalidTarget) {
@@ -282,18 +286,185 @@ func TestMeasureGivesEachFolderTheTargetThatOpensIt(t *testing.T) {
 	}
 }
 
+// Home and Old Downloads count only part of their folder, so each opens that
+// part: the total inside matches the row.
 func TestMeasureOverviewOpensEveryLocationAndInsight(t *testing.T) {
-	engine := NewEngine(Options{Measurer: &fakeMeasurer{measurement: overviewMeasurement()}})
+	engine := NewEngine(Options{Measurer: &fakeMeasurer{measurement: overviewMeasurement()}, Home: home})
 
 	result, err := engine.Measure(context.Background(), MeasureTarget{Kind: Overview})
 	if err != nil {
 		t.Fatal(err)
 	}
+	wants := map[string]MeasureTarget{
+		"User Library":         {Kind: Folder, Path: home + "/Library"},
+		"Home":                 {Kind: Folder, Path: home, ExcludeLibrary: true},
+		"Applications":         {Kind: Folder, Path: "/Applications"},
+		"System Library":       {Kind: Folder, Path: "/Library"},
+		"Docker Data":          {Kind: Folder, Path: home + "/Library/Containers/com.docker.docker/Data"},
+		"Old Downloads (90d+)": {Kind: Folder, Path: home + "/Downloads", OlderThanDays: 90},
+	}
 	for _, item := range slices.Concat(result.Items, result.Insights) {
-		want := MeasureTarget{Kind: Folder, Path: item.Path}
-		if item.Opens == nil || *item.Opens != want {
+		if want := wants[item.Name]; item.Opens == nil || *item.Opens != want {
 			t.Errorf("%s opens %#v, want %#v", item.Name, item.Opens, want)
 		}
+	}
+}
+
+// homeMeasurement is what Mole measures in Home, which holds ~/Library.
+func homeMeasurement() Measurement {
+	return Measurement{
+		Items: []MeasuredItem{
+			{Name: "Library", Path: home + "/Library", Bytes: 73_000_000_000, IsDir: true},
+			{Name: "Projects", Path: home + "/Projects", Bytes: 21_000_000_000, IsDir: true},
+			{Name: "Downloads", Path: home + "/Downloads", Bytes: 7_000_000_000, IsDir: true},
+			{Name: "notes.txt", Path: home + "/notes.txt", Bytes: 12_000},
+		},
+		LargestFiles: []MeasuredItem{
+			{Name: "Simulator.dmg", Path: home + "/Library/Developer/Simulator.dmg", Bytes: 9_000_000_000},
+			{Name: "demo.mov", Path: home + "/Projects/demo.mov", Bytes: 2_000_000_000},
+		},
+	}
+}
+
+func TestMeasureHomeWithoutLibraryLeavesItOutEverywhere(t *testing.T) {
+	engine := NewEngine(Options{Measurer: &fakeMeasurer{measurement: homeMeasurement()}, Home: home})
+
+	result, err := engine.Measure(context.Background(), MeasureTarget{Kind: Folder, Path: home, ExcludeLibrary: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"Projects", "Downloads", "notes.txt"}; !slices.Equal(names(result.Items), want) {
+		t.Errorf("items = %v, want %v", names(result.Items), want)
+	}
+	if want := int64(28_000_012_000); result.TotalBytes != want {
+		t.Errorf("totalBytes = %d, want %d", result.TotalBytes, want)
+	}
+	if want := []string{"demo.mov"}; !slices.Equal(names(result.LargestFiles), want) {
+		t.Errorf("largest files = %v, want %v", names(result.LargestFiles), want)
+	}
+}
+
+// What a result leaves out is not listed, so MoveToTrash must not know it.
+func TestMeasureRemembersNothingItLeftOut(t *testing.T) {
+	engine := NewEngine(Options{Measurer: &fakeMeasurer{measurement: homeMeasurement()}, Home: home})
+
+	if _, err := engine.Measure(context.Background(), MeasureTarget{Kind: Folder, Path: home, ExcludeLibrary: true}); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{home + "/Library", home + "/Library/Developer/Simulator.dmg"} {
+		if _, ok := engine.measuredPath(itemID(path)); ok {
+			t.Errorf("%s, left out of the result, resolves", path)
+		}
+	}
+}
+
+func TestMeasureHomeKeepsLibraryUnlessAskedToLeaveItOut(t *testing.T) {
+	engine := NewEngine(Options{Measurer: &fakeMeasurer{measurement: homeMeasurement()}, Home: home})
+
+	result, err := engine.Measure(context.Background(), MeasureTarget{Kind: Folder, Path: home})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"Library", "Projects", "Downloads", "notes.txt"}; !slices.Equal(names(result.Items), want) {
+		t.Errorf("items = %v, want %v", names(result.Items), want)
+	}
+	if want := []string{"Simulator.dmg", "demo.mov"}; !slices.Equal(names(result.LargestFiles), want) {
+		t.Errorf("largest files = %v, want %v", names(result.LargestFiles), want)
+	}
+}
+
+// downloadsMeasurement is what Mole measures in Downloads, now being when
+// the Measure runs.
+func downloadsMeasurement(now time.Time) Measurement {
+	path := home + "/Downloads/"
+	return Measurement{
+		Items: []MeasuredItem{
+			{Name: "fresh.iso", Path: path + "fresh.iso", Bytes: 8_000_000_000, ModTime: now.AddDate(0, 0, -89)},
+			{Name: "Xcode.xip", Path: path + "Xcode.xip", Bytes: 2_000_000_000, ModTime: now.AddDate(-1, 0, 0)},
+			{Name: "Installers", Path: path + "Installers", Bytes: 900_000_000, IsDir: true, ModTime: now.AddDate(0, 0, -91)},
+			{Name: ".cache", Path: path + ".cache", Bytes: 700_000_000, IsDir: true, ModTime: now.AddDate(-2, 0, 0)},
+			{Name: "unread", Path: path + "unread", Bytes: 500_000_000},
+		},
+		LargestFiles: []MeasuredItem{
+			{Name: "fresh.iso", Path: path + "fresh.iso", Bytes: 8_000_000_000},
+			{Name: "Xcode.xip", Path: path + "Xcode.xip", Bytes: 2_000_000_000},
+			{Name: "new.pkg", Path: path + "fresh/new.pkg", Bytes: 800_000_000},
+			{Name: "old.pkg", Path: path + "Installers/old.pkg", Bytes: 600_000_000},
+			{Name: "hidden.bin", Path: path + ".cache/hidden.bin", Bytes: 500_000_000},
+		},
+	}
+}
+
+// Mole's Insight counts the items directly in Downloads, hidden ones aside,
+// last modified more than 90 days ago. An item whose time could not be read
+// is not known to be old.
+func TestMeasureOldDownloadsListsWhatTheInsightCounts(t *testing.T) {
+	measurer := &fakeMeasurer{measurement: downloadsMeasurement(time.Now())}
+	engine := NewEngine(Options{Measurer: measurer, Home: home})
+
+	result, err := engine.Measure(context.Background(), MeasureTarget{Kind: Folder, Path: home + "/Downloads", OlderThanDays: 90})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"Xcode.xip", "Installers"}; !slices.Equal(names(result.Items), want) {
+		t.Errorf("items = %v, want %v", names(result.Items), want)
+	}
+	if want := int64(2_900_000_000); result.TotalBytes != want {
+		t.Errorf("totalBytes = %d, want %d", result.TotalBytes, want)
+	}
+	if want := []string{"Xcode.xip", "old.pkg"}; !slices.Equal(names(result.LargestFiles), want) {
+		t.Errorf("largest files = %v, want %v", names(result.LargestFiles), want)
+	}
+}
+
+func TestMeasureDownloadsKeepsEverythingUnlessAskedForTheOld(t *testing.T) {
+	measurer := &fakeMeasurer{measurement: downloadsMeasurement(time.Now())}
+	engine := NewEngine(Options{Measurer: measurer, Home: home})
+
+	result, err := engine.Measure(context.Background(), MeasureTarget{Kind: Folder, Path: home + "/Downloads"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := len(result.Items), len(measurer.measurement.Items); got != want {
+		t.Errorf("%d items, want all %d: %v", got, want, names(result.Items))
+	}
+}
+
+// The rows inside the old part open plain folders, whatever their parent.
+func TestMeasureOpensFoldersInsideANarrowedTargetInFull(t *testing.T) {
+	measurer := &fakeMeasurer{measurement: downloadsMeasurement(time.Now())}
+	engine := NewEngine(Options{Measurer: measurer, Home: home})
+
+	result, err := engine.Measure(context.Background(), MeasureTarget{Kind: Folder, Path: home + "/Downloads", OlderThanDays: 90})
+	if err != nil {
+		t.Fatal(err)
+	}
+	installers := slices.IndexFunc(result.Items, func(item SpaceItem) bool { return item.Name == "Installers" })
+	if installers < 0 {
+		t.Fatalf("items = %v, want Installers among them", names(result.Items))
+	}
+	opens := result.Items[installers].Opens
+	if want := (MeasureTarget{Kind: Folder, Path: home + "/Downloads/Installers"}); opens == nil || *opens != want {
+		t.Errorf("Installers opens %#v, want %#v", opens, want)
+	}
+}
+
+// Each is its own result, so measuring the old part keeps the whole folder's
+// items current.
+func TestMeasureKeepsTheOldPartAndTheWholeFolderApart(t *testing.T) {
+	measurer := &fakeMeasurer{measurement: downloadsMeasurement(time.Now())}
+	engine := NewEngine(Options{Measurer: measurer, Home: home})
+	whole := MeasureTarget{Kind: Folder, Path: home + "/Downloads"}
+	old := MeasureTarget{Kind: Folder, Path: home + "/Downloads", OlderThanDays: 90}
+	if _, err := engine.Measure(context.Background(), whole); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := engine.Measure(context.Background(), old); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, ok := engine.measuredPath(itemID(home + "/Downloads/fresh.iso")); !ok {
+		t.Error("fresh.iso, in the whole folder's result, no longer resolves")
 	}
 }
 
