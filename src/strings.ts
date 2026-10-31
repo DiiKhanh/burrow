@@ -93,21 +93,13 @@ export const strings = {
       chevron: "›",
       scanAgain: "← Scan again",
       clean: (count: number) => `Clean ${plural(count, "item", "items")} →`,
-      unreadable: "Protected access unavailable",
+      /** What to do once Full Disk Access is on. */
+      retryStep: "scan again",
       /** Why a locked junk group cannot be selected: "Safari is open. Quit it to clean." */
       locked: (apps: readonly string[]) =>
         apps.length === 1
           ? `${andList.format(apps)} is open. Quit it to clean.`
           : `${andList.format(apps)} are open. Quit them to clean.`,
-    },
-    fullDiskAccess: {
-      label: "Full Disk Access",
-      explanation: "macOS kept Burrow out of some places. Grant Full Disk Access to include them.",
-      action: "Open System Settings",
-      opened: "Turn on Burrow in Full Disk Access, then scan again.",
-      fallback: "In Privacy & Security, scroll to Full Disk Access, turn on Burrow, then scan again.",
-      failed:
-        "System Settings did not open. Open it from the Apple menu, go to Privacy & Security › Full Disk Access, and turn on Burrow.",
     },
     groups: {
       appCaches: { name: "App Caches", description: "Temporary files apps rebuild on next launch." },
@@ -119,6 +111,19 @@ export const strings = {
       appLeftovers: { name: "App Leftovers", description: "Files left behind by apps you removed." },
       deviceFirmware: { name: "Device Firmware", description: "Downloaded iPhone and iPad firmware files." },
     },
+  },
+  /** Clean and Space: what Burrow could not read, and where to grant access. */
+  fullDiskAccess: {
+    unavailable: "Protected access unavailable",
+    label: "Full Disk Access",
+    explanation: "macOS kept Burrow out of some places. Grant Full Disk Access to include them.",
+    action: "Open System Settings",
+    /** "Turn on Burrow in Full Disk Access, then scan again." */
+    opened: (retryStep: string) => `Turn on Burrow in Full Disk Access, then ${retryStep}.`,
+    fallback: (retryStep: string) =>
+      `In Privacy & Security, scroll to Full Disk Access, turn on Burrow, then ${retryStep}.`,
+    failed:
+      "System Settings did not open. Open it from the Apple menu, go to Privacy & Security › Full Disk Access, and turn on Burrow.",
   },
   units: {
     bytes: ["B", "KB", "MB", "GB", "TB", "PB", "EB"],
@@ -256,6 +261,10 @@ export const strings = {
     },
     measureAgain: "Measure again",
     stale: "Measured before last clean",
+    /** What to do once Full Disk Access is on. */
+    retryStep: "measure again",
+    /** Beside the size of a Space item only partly read: the size may be low. */
+    partlyUnreadable: "Partly unreadable",
     /** A row's button, which measures the folder it shows. */
     open: (name: string) => `Open ${name}`,
     chevron: "›",
@@ -272,8 +281,11 @@ export const strings = {
     folder: {
       /** The unit after the big number: "GB in this folder". */
       total: (unit: string) => `${unit} in this folder`,
+      totalWithoutLibrary: (unit: string) => `${unit} in this folder, without Library`,
+      totalOlderThan: (unit: string, days: number) => `${unit} older than ${days} days`,
       contents: "Contents",
       empty: "This folder is empty.",
+      emptyOlderThan: (days: number) => `Nothing here is older than ${days} days.`,
       largestFiles: (name: string) => `Largest files in ${name}`,
       largestFilesHint: "Anywhere in this folder",
     },

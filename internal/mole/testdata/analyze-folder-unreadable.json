@@ -1,0 +1,38 @@
+{
+  "scan_status": "partial",
+  "path": "/Users/test/Projects",
+  "overview": false,
+  "entries": [
+    {
+      "scan_status": "partial",
+      "name": "mixed",
+      "path": "/Users/test/Projects/mixed",
+      "size": 2097152,
+      "is_dir": true
+    },
+    {
+      "scan_status": "complete",
+      "name": "notes.txt",
+      "path": "/Users/test/Projects/notes.txt",
+      "size": 4096,
+      "is_dir": false,
+      "last_access": "2026-10-30T09:00:00Z"
+    },
+    {
+      "scan_status": "unavailable",
+      "name": "locked",
+      "path": "/Users/test/Projects/locked",
+      "size": 0,
+      "is_dir": true
+    }
+  ],
+  "large_files": [
+    {
+      "name": "a.bin",
+      "path": "/Users/test/Projects/mixed/open/a.bin",
+      "size": 2097152
+    }
+  ],
+  "total_size": 2101248,
+  "total_files": 2
+}

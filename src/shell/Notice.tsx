@@ -16,7 +16,7 @@ export function Notice({ label, action, onAction, ink = "text-ink-muted", childr
       aria-label={label}
       className="flex w-full shrink-0 items-center gap-4 rounded-card border border-line bg-surface px-4 py-2.5"
     >
-      <p role="status" className={`min-w-0 flex-1 text-caption ${ink}`}>
+      <p role="status" className={`min-w-0 flex-1 text-balance text-caption ${ink}`}>
         {children}
       </p>
       <button

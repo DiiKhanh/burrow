@@ -40,19 +40,33 @@ const (
 	Folder TargetKind = "folder"
 )
 
+// oldDownloadsDays is the age Mole's Old Downloads Insight counts.
+const oldDownloadsDays = 90
+
 // MeasureTarget says what one Measure measures. Each Space item that opens
-// carries the target the UI sends back. Path is set for a Folder only.
+// carries the target the UI sends back. Path is set for a Folder only, as
+// are the two narrowings an overview row needs for the total inside to match
+// it: ExcludeLibrary leaves ~/Library out of Home, and a positive
+// OlderThanDays lists only the items, hidden ones aside, not modified for
+// that many days.
 type MeasureTarget struct {
-	Kind TargetKind `json:"kind"`
-	Path string     `json:"path,omitempty"`
+	Kind           TargetKind `json:"kind"`
+	Path           string     `json:"path,omitempty"`
+	ExcludeLibrary bool       `json:"excludeLibrary,omitempty"`
+	OlderThanDays  int        `json:"olderThanDays,omitempty"`
 }
 
-func (t MeasureTarget) valid() bool {
+// narrowed is true for a target that lists only part of its folder.
+func (t MeasureTarget) narrowed() bool {
+	return t.ExcludeLibrary || t.OlderThanDays > 0
+}
+
+func (t MeasureTarget) valid(home string) bool {
 	switch t.Kind {
 	case Overview:
-		return t.Path == ""
+		return t == MeasureTarget{Kind: Overview}
 	case Folder:
-		return CleanAbsolute(t.Path)
+		return CleanAbsolute(t.Path) && t.OlderThanDays >= 0 && (!t.ExcludeLibrary || t.Path == home)
 	default:
 		return false
 	}
@@ -82,17 +96,32 @@ const (
 	TagCleanHandles Tag = "clean-handles"
 )
 
+// ReadState says how much of a Space item a Measure could read.
+type ReadState string
+
+const (
+	// ReadComplete means its size covers all of it.
+	ReadComplete ReadState = "complete"
+	// ReadPartial means part of it could not be read, so its size may be
+	// low.
+	ReadPartial ReadState = "partial"
+	// ReadUnavailable means it could not be read, so it has no size.
+	ReadUnavailable ReadState = "unavailable"
+)
+
 // SpaceItem is one file or folder shown in Space with its size. Its ID stays
 // the same for its path, so a later Measure keeps it. Opens is the target
-// that measures a folder's contents, nil for anything else.
+// that measures a folder's contents, nil for anything else, including a
+// folder whose ReadState is unavailable: measuring it could only fail.
 type SpaceItem struct {
-	ID    string         `json:"id"`
-	Name  string         `json:"name"`
-	Path  string         `json:"path"`
-	Bytes int64          `json:"bytes"`
-	IsDir bool           `json:"isDir"`
-	Tags  []Tag          `json:"tags"`
-	Opens *MeasureTarget `json:"opens"`
+	ID        string         `json:"id"`
+	Name      string         `json:"name"`
+	Path      string         `json:"path"`
+	Bytes     int64          `json:"bytes"`
+	IsDir     bool           `json:"isDir"`
+	ReadState ReadState      `json:"readState"`
+	Tags      []Tag          `json:"tags"`
+	Opens     *MeasureTarget `json:"opens"`
 }
 
 // MeasureResult is what one Measure found, as of MeasuredAt, when it
@@ -100,6 +129,7 @@ type SpaceItem struct {
 // Insights and LargestFiles are each sorted largest first. Insights lie
 // inside the items, and LargestFiles anywhere below a folder's items, so
 // TotalBytes adds up the items only, never counting the same bytes twice.
+// An item with no size adds nothing, so TotalBytes is what could be read.
 // LargestFiles is set for a folder only, never for the overview.
 type MeasureResult struct {
 	Target       MeasureTarget `json:"target"`
@@ -112,14 +142,17 @@ type MeasureResult struct {
 
 // MeasuredItem is one file or folder as the adapter measured it. Insight
 // marks a location Mole flags as commonly taking hidden space, Regenerable
-// a folder whose content its tools make again, such as node_modules.
+// a folder whose content its tools make again, such as node_modules. ModTime
+// is when an item directly in a folder was last modified, zero when unknown.
 type MeasuredItem struct {
 	Name        string
 	Path        string
 	Bytes       int64
 	IsDir       bool
+	ReadState   ReadState
 	Insight     bool
 	Regenerable bool
+	ModTime     time.Time
 }
 
 // Measurement is what the adapter measured for one target. LargestFiles
@@ -168,8 +201,8 @@ func NewEngine(options Options) *Engine {
 // Measure computes the sizes target holds without removing anything. It
 // runs alongside a Scan or Clean.
 func (e *Engine) Measure(ctx context.Context, target MeasureTarget) (MeasureResult, error) {
-	if !target.valid() {
-		return MeasureResult{}, fmt.Errorf("%w: %q %q", ErrInvalidTarget, target.Kind, target.Path)
+	if !target.valid(e.home) {
+		return MeasureResult{}, fmt.Errorf("%w: %+v", ErrInvalidTarget, target)
 	}
 	measuredAt := time.Now()
 	measurement, err := e.measurer.Measure(ctx, target)
@@ -182,10 +215,15 @@ func (e *Engine) Measure(ctx context.Context, target MeasureTarget) (MeasureResu
 		Items:      []SpaceItem{},
 		Insights:   []SpaceItem{},
 	}
+	listed := make(map[string]bool, len(measurement.Items))
 	for _, measured := range measurement.Items {
+		if !e.lists(target, measured, measuredAt) {
+			continue
+		}
+		listed[measured.Path] = true
 		item := e.spaceItem(measured)
-		if measured.IsDir {
-			item.Opens = &MeasureTarget{Kind: Folder, Path: measured.Path}
+		if measured.IsDir && measured.ReadState != ReadUnavailable {
+			item.Opens = e.opens(target, measured)
 		}
 		if measured.Insight {
 			result.Insights = append(result.Insights, item)
@@ -197,6 +235,9 @@ func (e *Engine) Measure(ctx context.Context, target MeasureTarget) (MeasureResu
 	if target.Kind == Folder {
 		result.LargestFiles = make([]SpaceItem, 0, len(measurement.LargestFiles))
 		for _, measured := range measurement.LargestFiles {
+			if target.narrowed() && !listed[holder(target.Path, measured.Path)] {
+				continue
+			}
 			result.LargestFiles = append(result.LargestFiles, e.spaceItem(measured))
 		}
 	}
@@ -205,6 +246,40 @@ func (e *Engine) Measure(ctx context.Context, target MeasureTarget) (MeasureResu
 	slices.SortStableFunc(result.LargestFiles, largestFirst)
 	e.remember(target, result.Items, result.Insights, result.LargestFiles)
 	return result, nil
+}
+
+// lists reports whether a Measure of target shows measured. The old part of
+// a folder holds what Mole's Old Downloads Insight counts: hidden items never
+// do, and a time the adapter could not read is not known to be old.
+func (e *Engine) lists(target MeasureTarget, measured MeasuredItem, measuredAt time.Time) bool {
+	if target.ExcludeLibrary && measured.Path == filepath.Join(e.home, "Library") {
+		return false
+	}
+	if target.OlderThanDays == 0 {
+		return true
+	}
+	cutoff := measuredAt.AddDate(0, 0, -target.OlderThanDays)
+	return !strings.HasPrefix(measured.Name, ".") && !measured.ModTime.IsZero() && measured.ModTime.Before(cutoff)
+}
+
+// opens is the target that measures the folder measured, a row of the result
+// of target. In the overview, Home and Old Downloads count only part of it.
+func (e *Engine) opens(target MeasureTarget, measured MeasuredItem) *MeasureTarget {
+	folder := MeasureTarget{Kind: Folder, Path: measured.Path}
+	if target.Kind == Overview {
+		folder.ExcludeLibrary = measured.Path == e.home
+		if measured.Insight && measured.Path == filepath.Join(e.home, "Downloads") {
+			folder.OlderThanDays = oldDownloadsDays
+		}
+	}
+	return &folder
+}
+
+// holder is the item directly in folder that path, below it, lies in or is.
+func holder(folder, path string) string {
+	rel := strings.TrimPrefix(path, strings.TrimSuffix(folder, "/")+"/")
+	first, _, _ := strings.Cut(rel, "/")
+	return filepath.Join(folder, first)
 }
 
 // spaceItem is measured as Space shows it, opening nothing.
@@ -219,13 +294,19 @@ func (e *Engine) spaceItem(measured MeasuredItem) SpaceItem {
 	if e.cleanHandles(measured.Path) {
 		tags = append(tags, TagCleanHandles)
 	}
+	bytes := measured.Bytes
+	if measured.ReadState == ReadUnavailable {
+		// Whatever the adapter reports for it, it must not reach the total.
+		bytes = 0
+	}
 	return SpaceItem{
-		ID:    itemID(measured.Path),
-		Name:  measured.Name,
-		Path:  measured.Path,
-		Bytes: measured.Bytes,
-		IsDir: measured.IsDir,
-		Tags:  tags,
+		ID:        itemID(measured.Path),
+		Name:      measured.Name,
+		Path:      measured.Path,
+		Bytes:     bytes,
+		IsDir:     measured.IsDir,
+		ReadState: measured.ReadState,
+		Tags:      tags,
 	}
 }
 

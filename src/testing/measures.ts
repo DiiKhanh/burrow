@@ -1,23 +1,52 @@
 // Measure results for `vite --mode fake`, shaped like the ones Go sends:
 // the overview of a well-used Mac and a few folders in Home, each list
 // largest first.
-import type { MeasureResult, SpaceItem, Tag } from "../mygo";
+import type { MeasureResult, MeasureTarget, SpaceItem, Tag } from "../mygo";
 
 const GB = 1e9;
 const MB = 1e6;
 const HOME = "/Users/test";
 
-function item(name: string, path: string, bytes: number, tags: Tag[] = []): SpaceItem {
-  return { id: `id:${path}`, name, path, bytes, isDir: true, tags, opens: { kind: "folder", path } };
+/** How a target narrows its folder, as Go sets it on Home and Old Downloads. */
+type Narrowing = Pick<MeasureTarget, "excludeLibrary" | "olderThanDays">;
+
+const WITHOUT_LIBRARY: Narrowing = { excludeLibrary: true };
+const OLD: Narrowing = { olderThanDays: 90 };
+
+function item(name: string, path: string, bytes: number, tags: Tag[] = [], narrowing: Narrowing = {}): SpaceItem {
+  return {
+    id: `id:${path}`,
+    name,
+    path,
+    bytes,
+    isDir: true,
+    readState: "complete",
+    tags,
+    opens: { kind: "folder", path, ...narrowing },
+  };
 }
 
 function file(name: string, path: string, bytes: number, tags: Tag[] = []): SpaceItem {
-  return { id: `id:${path}`, name, path, bytes, isDir: false, tags, opens: null };
+  return { id: `id:${path}`, name, path, bytes, isDir: false, readState: "complete", tags, opens: null };
 }
+
+/** A folder Mole could read only part of: its size may be low. */
+function partly(name: string, path: string, bytes: number): SpaceItem {
+  return { ...item(name, path, bytes), readState: "partial" };
+}
+
+/** A folder Mole could not read: no size, and nothing to open. */
+function unreadable(name: string, path: string, tags: Tag[] = []): SpaceItem {
+  return { ...item(name, path, 0, tags), readState: "unavailable", opens: null };
+}
+
+/** The same in the overview's row and inside it, as is OLD_DOWNLOADS_BYTES. */
+const HOME_BYTES = 46_300_012_000;
+const OLD_DOWNLOADS_BYTES = 3.02 * GB;
 
 const locations = [
   item("User Library", `${HOME}/Library`, 73.1 * GB),
-  item("Home", HOME, 46.4 * GB),
+  item("Home", HOME, HOME_BYTES, [], WITHOUT_LIBRARY),
   item("Applications", "/Applications", 19.7 * GB),
   item("System Library", "/Library", 6.83 * GB),
 ];
@@ -30,16 +59,34 @@ export const overview: MeasureResult = {
   insights: [
     item("Docker Data", `${HOME}/Library/Containers/com.docker.docker/Data`, 21.6 * GB, ["insight"]),
     item("Xcode Simulators", `${HOME}/Library/Developer/CoreSimulator/Devices`, 3.07 * GB, ["insight"]),
-    item("Old Downloads (90d+)", `${HOME}/Downloads`, 3.02 * GB, ["insight"]),
+    item("Old Downloads (90d+)", `${HOME}/Downloads`, OLD_DOWNLOADS_BYTES, ["insight"], OLD),
     item("Homebrew Cache", `${HOME}/Library/Caches/Homebrew`, 181 * MB, ["insight", "clean-handles"]),
     item("System Logs", `${HOME}/Library/Logs`, 2.1 * MB, ["insight", "clean-handles"]),
   ],
-  totalBytes: 146.03 * GB,
+  totalBytes: 145_930_012_000,
 };
 
-function folder(path: string, items: SpaceItem[], totalBytes: number, largestFiles: SpaceItem[] = []): MeasureResult {
+/** An overview Mole could not read all of: one location read in part, one Insight not at all. */
+export const unreadableOverview: MeasureResult = {
+  ...overview,
+  items: locations.map((location) =>
+    location.name === "User Library" ? partly(location.name, location.path, location.bytes) : location,
+  ),
+  insights: [
+    ...overview.insights,
+    unreadable("iOS Backups", `${HOME}/Library/Application Support/MobileSync/Backup`, ["insight"]),
+  ],
+};
+
+function folder(
+  path: string,
+  items: SpaceItem[],
+  totalBytes: number,
+  largestFiles: SpaceItem[] = [],
+  narrowing: Narrowing = {},
+): MeasureResult {
   return {
-    target: { kind: "folder", path },
+    target: { kind: "folder", path, ...narrowing },
     measuredAt: "2026-10-30T09:01:00Z",
     items,
     insights: [],
@@ -48,7 +95,7 @@ function folder(path: string, items: SpaceItem[], totalBytes: number, largestFil
   };
 }
 
-/** Home as the overview opens it, holding more folders and a file. */
+/** Home as the overview opens it, without ~/Library, holding more folders and a file. */
 export const homeFolder = folder(
   HOME,
   [
@@ -58,12 +105,38 @@ export const homeFolder = folder(
     item("Documents", `${HOME}/Documents`, 4.5 * GB),
     file("notes.txt", `${HOME}/notes.txt`, 12 * 1e3),
   ],
-  46_300_012_000,
+  HOME_BYTES,
   [
     file("Trip 2025.mov", `${HOME}/Movies/Trip 2025.mov`, 8.2 * GB),
     file(`quote"and'apostrophe.zip`, `${HOME}/Projects/quote"and'apostrophe.zip`, 3.1 * GB),
     file("Burrow.dmg", `${HOME}/Projects/burrow/release/Burrow.dmg`, 1.2 * GB),
   ],
+  WITHOUT_LIBRARY,
+);
+
+const DOWNLOADS = `${HOME}/Downloads`;
+
+/** What Old Downloads lists: the part of Downloads the Insight counts. */
+const oldDownloads = [
+  file("Xcode_16.xip", `${DOWNLOADS}/Xcode_16.xip`, 2.1 * GB),
+  item("Installers", `${DOWNLOADS}/Installers`, 900 * MB),
+  file("invoice.pdf", `${DOWNLOADS}/invoice.pdf`, 20 * MB),
+];
+
+/** Downloads as the Old Downloads Insight opens it. */
+export const oldDownloadsFolder = folder(
+  DOWNLOADS,
+  oldDownloads,
+  OLD_DOWNLOADS_BYTES,
+  [file("Xcode_16.xip", `${DOWNLOADS}/Xcode_16.xip`, 2.1 * GB)],
+  OLD,
+);
+
+/** Downloads as Home opens it, in full. */
+export const downloadsFolder = folder(
+  DOWNLOADS,
+  [file("macOS.ipsw", `${DOWNLOADS}/macOS.ipsw`, 4.58 * GB), ...oldDownloads],
+  7.6 * GB,
 );
 
 /** Projects in Home, with names that need care. */
@@ -94,7 +167,36 @@ export const burrowFolder = folder(
   [file("Burrow.dmg", `${HOME}/Projects/burrow/release/Burrow.dmg`, 1.2 * GB)],
 );
 
-/** The fake Measure of the folder at path: Home, Projects and burrow, or else nothing. */
-export function folderAt(path: string): MeasureResult {
-  return [homeFolder, projectsFolder, burrowFolder].find((known) => known.target.path === path) ?? folder(path, [], 0);
+/** The User Library, with one folder read in part and one not at all. */
+export const libraryFolder = folder(
+  `${HOME}/Library`,
+  [
+    partly("Application Support", `${HOME}/Library/Application Support`, 41.2 * GB),
+    item("Developer", `${HOME}/Library/Developer`, 25.1 * GB),
+    unreadable("Mail", `${HOME}/Library/Mail`),
+  ],
+  66.3 * GB,
+);
+
+/** A folder read in part, with nothing Mole could not read at all. */
+export const partlyReadFolder = folder(
+  "/Library",
+  [partly("Application Support", "/Library/Application Support", 4.1 * GB), item("Fonts", "/Library/Fonts", 2.7 * GB)],
+  6.8 * GB,
+);
+
+const KNOWN_FOLDERS = [
+  homeFolder,
+  oldDownloadsFolder,
+  downloadsFolder,
+  projectsFolder,
+  burrowFolder,
+  libraryFolder,
+  partlyReadFolder,
+];
+
+/** The fake Measure of target: one of the folders above, or else nothing. */
+export function folderAt(target: MeasureTarget): MeasureResult {
+  const known = KNOWN_FOLDERS.find((result) => JSON.stringify(result.target) === JSON.stringify(target));
+  return known ?? { ...folder(target.path ?? "", [], 0), target };
 }

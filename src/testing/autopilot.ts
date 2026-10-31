@@ -2,7 +2,7 @@
 // gets whole Scan and Clean runs without driving each step. Only
 // `vite --mode fake` installs it; Vitest drives `fakeGo` itself.
 import type { CleanProgress, CleanReport, LockedGroup, ScanProgress, ScanResult } from "../mygo";
-import { folderAt, overview } from "./measures";
+import { folderAt, overview, unreadableOverview } from "./measures";
 import type { CleanCall, FakeGo, MeasureCall, ScanCall } from "./mygo.fake";
 import { fullScan, longScan, unreadableScan } from "./scans";
 
@@ -115,8 +115,9 @@ async function runClean(call: CleanCall, scan: ScanResult, scenario: string | nu
 }
 
 /**
- * Runs a Measure by `?measure=`: `running` never ends, `failed` fails, and
- * any other value ends with the overview or the fake folder, measured now.
+ * Runs a Measure by `?measure=`: `running` never ends, `failed` fails,
+ * `unreadable` ends with an overview Mole could not read all of, and any
+ * other value ends with the overview or the fake folder, measured now.
  */
 async function runMeasure(call: MeasureCall, scenario: string | null) {
   if (scenario === "failed") {
@@ -126,7 +127,8 @@ async function runMeasure(call: MeasureCall, scenario: string | null) {
   // As Go: stamped when the Measure starts, in how time.Time marshals a local time, nanoseconds and offset.
   const measuredAt = new Date(Date.now() + 7 * 3_600_000).toISOString().replace("Z", "456789+07:00");
   if (!(await stillRunning(call, 30)) || scenario === "running") return;
-  const result = call.target.kind === "folder" ? folderAt(call.target.path ?? "") : overview;
+  const whole = scenario === "unreadable" ? unreadableOverview : overview;
+  const result = call.target.kind === "folder" ? folderAt(call.target) : whole;
   call.resolve({ ...result, measuredAt });
 }
 

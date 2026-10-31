@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { bytesParts, formatBytes } from "../format";
 import type { JunkGroup, JunkGroupID, ScanResult } from "../mygo";
+import { FullDiskAccessNotice } from "../shell/FullDiskAccessNotice";
 import { PillButton } from "../shell/PillButton";
 import { strings } from "../strings";
 import { JUNK_GROUP_ORDER, junkGroupCatalog } from "./catalog";
-import { FullDiskAccessNotice } from "./FullDiskAccessNotice";
 import { SelectionBar } from "./SelectionBar";
 import {
   defaultSelection,
@@ -81,7 +81,7 @@ export function Review({ result, onScanAgain, onClean }: Props) {
           ),
         )}
       </ul>
-      {result.unreadable.length > 0 && <FullDiskAccessNotice />}
+      {result.unreadable.length > 0 && <FullDiskAccessNotice retryStep={strings.clean.review.retryStep} />}
       <div className="flex w-full items-center justify-between">
         <button type="button" onClick={onScanAgain} className="text-ink-muted text-note hover:text-ink">
           {strings.clean.review.scanAgain}
@@ -115,7 +115,7 @@ function UnreadableRow({ id }: { id: JunkGroupID }) {
 }
 
 function UnreadableLabel() {
-  return <span className="ml-2 font-normal text-caption text-warn">{strings.clean.review.unreadable}</span>;
+  return <span className="ml-2 font-normal text-caption text-warn">{strings.fullDiskAccess.unavailable}</span>;
 }
 
 type GroupRowProps = {

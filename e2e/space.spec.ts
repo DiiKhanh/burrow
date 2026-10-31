@@ -32,7 +32,7 @@ test("shows the overview: the locations' total, Insights above Locations", async
   await expect(insights.getByRole("listitem").first()).toHaveText("Docker DataInsightReveal21.6 GB›");
   await expect(locations.getByRole("listitem")).toHaveText([
     "User LibraryReveal73.1 GB›",
-    "HomeReveal46.4 GB›",
+    "HomeReveal46.3 GB›",
     "ApplicationsReveal19.7 GB›",
     "System LibraryReveal6.83 GB›",
   ]);
@@ -69,7 +69,7 @@ test("drills down into folders and back up the trail without measuring again", a
   await expect(trail.getByRole("button")).toHaveText(["This Mac"]);
 
   await page.getByRole("button", { name: "Open Home", exact: true }).click();
-  await expect(page.getByText("46.3 GB in this folder")).toBeVisible();
+  await expect(page.getByText("46.3 GB in this folder, without Library")).toBeVisible();
   await page.getByRole("button", { name: "Open Projects" }).click();
   await expect(page.getByText("21.4 GB in this folder")).toBeVisible();
   await expect(page.getByRole("region", { name: "Contents" }).getByRole("listitem")).toHaveText([
@@ -83,13 +83,37 @@ test("drills down into folders and back up the trail without measuring again", a
   await trail.getByRole("button", { name: "This Mac" }).click();
   await expect(page.getByText("146 GB measured on this Mac")).toBeVisible();
   await page.getByRole("button", { name: "Open Home", exact: true }).click();
-  await expect(page.getByText("46.3 GB in this folder")).toBeVisible();
+  await expect(page.getByText("46.3 GB in this folder, without Library")).toBeVisible();
 
   const targets = await page.evaluate(() => window.burrowFake?.measure.calls.map((call) => call.target));
   expect(targets).toEqual([
     { kind: "overview" },
-    { kind: "folder", path: "/Users/test" },
+    { kind: "folder", path: "/Users/test", excludeLibrary: true },
     { kind: "folder", path: "/Users/test/Projects" },
+  ]);
+});
+
+test("opens Home and Old Downloads from the overview with the totals of their rows", async ({ page }) => {
+  await page.goto("/");
+  await page.keyboard.press("Meta+3");
+  await expect(page.getByRole("listitem").filter({ hasText: "Old Downloads (90d+)" })).toContainText("3.02 GB");
+  await expect(page.getByRole("region", { name: "Locations" }).getByRole("listitem").nth(1)).toContainText("46.3 GB");
+
+  await page.getByRole("button", { name: "Open Home", exact: true }).click();
+  await expect(page.getByText("46.3 GB in this folder, without Library")).toBeVisible();
+  const contents = page.getByRole("region", { name: "Contents" }).getByRole("listitem");
+  await expect(contents.filter({ hasText: "Library" })).toHaveCount(0);
+
+  await page.getByRole("navigation", { name: "Folders" }).getByRole("button", { name: "This Mac" }).click();
+  await page.getByRole("button", { name: "Open Old Downloads (90d+)" }).click();
+  await expect(page.getByText("3.02 GB older than 90 days")).toBeVisible();
+  await expect(contents).toHaveText(["Xcode_16.xipReveal2.1 GB", "InstallersReveal900 MB›", "invoice.pdfReveal20 MB"]);
+
+  const targets = await page.evaluate(() => window.burrowFake?.measure.calls.map((call) => call.target));
+  expect(targets).toEqual([
+    { kind: "overview" },
+    { kind: "folder", path: "/Users/test", excludeLibrary: true },
+    { kind: "folder", path: "/Users/test/Downloads", olderThanDays: 90 },
   ]);
 });
 
@@ -97,16 +121,16 @@ test("measures the folder on screen again", async ({ page }) => {
   await page.goto("/");
   await page.keyboard.press("Meta+3");
   await page.getByRole("button", { name: "Open Home", exact: true }).click();
-  await expect(page.getByText("46.3 GB in this folder")).toBeVisible();
+  await expect(page.getByText("46.3 GB in this folder, without Library")).toBeVisible();
 
   await page.getByRole("button", { name: "Measure again" }).click();
 
-  await expect(page.getByText("46.3 GB in this folder")).toBeVisible();
+  await expect(page.getByText("46.3 GB in this folder, without Library")).toBeVisible();
   const targets = await page.evaluate(() => window.burrowFake?.measure.calls.map((call) => call.target));
   expect(targets).toEqual([
     { kind: "overview" },
-    { kind: "folder", path: "/Users/test" },
-    { kind: "folder", path: "/Users/test" },
+    { kind: "folder", path: "/Users/test", excludeLibrary: true },
+    { kind: "folder", path: "/Users/test", excludeLibrary: true },
   ]);
 });
 
@@ -179,7 +203,42 @@ test("reveals any row in Finder, outside Home too, without opening it", async ({
   const revealed = await page.evaluate(() => window.burrowFake?.reveal.calls.map((call) => call.id));
   expect(revealed).toEqual(["id:/Applications", "id:/Users/test/Movies/Trip 2025.mov"]);
   const targets = await page.evaluate(() => window.burrowFake?.measure.calls.map((call) => call.target));
-  expect(targets).toEqual([{ kind: "overview" }, { kind: "folder", path: "/Users/test" }]);
+  expect(targets).toEqual([{ kind: "overview" }, { kind: "folder", path: "/Users/test", excludeLibrary: true }]);
+});
+
+test("shows what the overview could not read and opens Full Disk Access", async ({ page }) => {
+  await page.goto("/?measure=unreadable");
+  await page.keyboard.press("Meta+3");
+
+  await expect(page.getByRole("region", { name: "Locations" }).getByRole("listitem").first()).toHaveText(
+    "User LibraryRevealPartly unreadable73.1 GB›",
+  );
+  await expect(page.getByRole("region", { name: "Insights" }).getByRole("listitem").last()).toHaveText(
+    "iOS BackupsInsightRevealProtected access unavailable",
+  );
+  await expect(page.getByRole("button", { name: "Open iOS Backups" })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Open System Settings" }).click();
+  await expect(page.getByText("Turn on Burrow in Full Disk Access, then measure again.")).toBeVisible();
+});
+
+test("lists a folder's readable rows beside the ones it could not read", async ({ page }) => {
+  await page.goto("/?settings=fallback");
+  await page.keyboard.press("Meta+3");
+  await expect(page.getByRole("region", { name: "Full Disk Access" })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Open User Library" }).click();
+
+  await expect(page.getByText("66.3 GB in this folder")).toBeVisible();
+  await expect(page.getByRole("region", { name: "Contents" }).getByRole("listitem")).toHaveText([
+    "Application SupportRevealPartly unreadable41.2 GB›",
+    "DeveloperReveal25.1 GB›",
+    "MailRevealProtected access unavailable",
+  ]);
+  await page.getByRole("button", { name: "Open System Settings" }).click();
+  await expect(
+    page.getByText("In Privacy & Security, scroll to Full Disk Access, turn on Burrow, then measure again."),
+  ).toBeVisible();
 });
 
 test("marks the overview after a Clean, under its total, until measured again", async ({ page }) => {

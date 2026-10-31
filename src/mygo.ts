@@ -150,6 +150,7 @@ export interface LockedGroup {
  * Insights and LargestFiles are each sorted largest first. Insights lie
  * inside the items, and LargestFiles anywhere below a folder's items, so
  * TotalBytes adds up the items only, never counting the same bytes twice.
+ * An item with no size adds nothing, so TotalBytes is what could be read.
  * LargestFiles is set for a folder only, never for the overview.
  */
 export interface MeasureResult {
@@ -163,11 +164,17 @@ export interface MeasureResult {
 
 /**
  * MeasureTarget says what one Measure measures. Each Space item that opens
- * carries the target the UI sends back. Path is set for a Folder only.
+ * carries the target the UI sends back. Path is set for a Folder only, as
+ * are the two narrowings an overview row needs for the total inside to match
+ * it: ExcludeLibrary leaves ~/Library out of Home, and a positive
+ * OlderThanDays lists only the items, hidden ones aside, not modified for
+ * that many days.
  */
 export interface MeasureTarget {
   kind: TargetKind;
   path?: string;
+  excludeLibrary?: boolean;
+  olderThanDays?: number;
 }
 
 /** Memory is physical and swap memory usage. */
@@ -213,6 +220,9 @@ export interface Process {
   /** MemoryBytes is the resident memory. */
   memoryBytes: number | null;
 }
+
+/** ReadState says how much of a Space item a Measure could read. */
+export type ReadState = "complete" | "partial" | "unavailable";
 
 /** RemovalMethod says how an item is removed. */
 export type RemovalMethod = "delete" | "move-to-trash";
@@ -287,7 +297,8 @@ export interface Snapshot {
 /**
  * SpaceItem is one file or folder shown in Space with its size. Its ID stays
  * the same for its path, so a later Measure keeps it. Opens is the target
- * that measures a folder's contents, nil for anything else.
+ * that measures a folder's contents, nil for anything else, including a
+ * folder whose ReadState is unavailable: measuring it could only fail.
  */
 export interface SpaceItem {
   id: string;
@@ -295,6 +306,7 @@ export interface SpaceItem {
   path: string;
   bytes: number;
   isDir: boolean;
+  readState: ReadState;
   tags: Tag[];
   opens: MeasureTarget | null;
 }
