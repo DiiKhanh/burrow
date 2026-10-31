@@ -87,11 +87,26 @@ function ItemRow({ item, share, detail, onOpen }: RowProps) {
       >
         {strings.space.reveal}
       </button>
-      <span className="tabular relative font-mono text-note text-size">{formatBytes(item.bytes)}</span>
+      <ItemSize item={item} />
       <span aria-hidden="true" className="relative w-2 text-ink-faint text-note">
         {item.opens && strings.space.chevron}
       </span>
     </li>
+  );
+}
+
+const READ_NOTE = "relative shrink-0 whitespace-nowrap text-caption text-warn";
+
+/** The item's size, a size that may be low, or in place of one, why there is none. */
+function ItemSize({ item }: { item: SpaceItem }) {
+  if (item.readState === "unavailable") {
+    return <span className={READ_NOTE}>{strings.fullDiskAccess.unavailable}</span>;
+  }
+  return (
+    <>
+      {item.readState === "partial" && <span className={READ_NOTE}>{strings.space.partlyUnreadable}</span>}
+      <span className="tabular relative font-mono text-note text-size">{formatBytes(item.bytes)}</span>
+    </>
   );
 }
 

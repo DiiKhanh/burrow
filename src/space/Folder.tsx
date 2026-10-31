@@ -2,6 +2,7 @@ import type { MeasureResult, SpaceItem } from "../mygo";
 import { strings } from "../strings";
 import { ItemSection } from "./ItemSection";
 import { Total } from "./Total";
+import { UnreadableNotice } from "./UnreadableNotice";
 
 type Props = { name: string; result: MeasureResult; onOpen: (item: SpaceItem) => void };
 
@@ -10,7 +11,8 @@ export function Folder({ name, result, onOpen }: Props) {
   const largestFiles = result.largestFiles ?? [];
   return (
     <>
-      <Total bytes={result.totalBytes} label={strings.space.folder.total} />
+      <Total bytes={result.totalBytes} label={strings.space.folder.total} items={result.items} />
+      <UnreadableNotice result={result} />
       {result.items.length > 0 ? (
         <ItemSection
           title={strings.space.folder.contents}

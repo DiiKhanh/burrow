@@ -82,17 +82,32 @@ const (
 	TagCleanHandles Tag = "clean-handles"
 )
 
+// ReadState says how much of a Space item a Measure could read.
+type ReadState string
+
+const (
+	// ReadComplete means its size covers all of it.
+	ReadComplete ReadState = "complete"
+	// ReadPartial means part of it could not be read, so its size may be
+	// low.
+	ReadPartial ReadState = "partial"
+	// ReadUnavailable means it could not be read, so it has no size.
+	ReadUnavailable ReadState = "unavailable"
+)
+
 // SpaceItem is one file or folder shown in Space with its size. Its ID stays
 // the same for its path, so a later Measure keeps it. Opens is the target
-// that measures a folder's contents, nil for anything else.
+// that measures a folder's contents, nil for anything else, including a
+// folder whose ReadState is unavailable: measuring it could only fail.
 type SpaceItem struct {
-	ID    string         `json:"id"`
-	Name  string         `json:"name"`
-	Path  string         `json:"path"`
-	Bytes int64          `json:"bytes"`
-	IsDir bool           `json:"isDir"`
-	Tags  []Tag          `json:"tags"`
-	Opens *MeasureTarget `json:"opens"`
+	ID        string         `json:"id"`
+	Name      string         `json:"name"`
+	Path      string         `json:"path"`
+	Bytes     int64          `json:"bytes"`
+	IsDir     bool           `json:"isDir"`
+	ReadState ReadState      `json:"readState"`
+	Tags      []Tag          `json:"tags"`
+	Opens     *MeasureTarget `json:"opens"`
 }
 
 // MeasureResult is what one Measure found, as of MeasuredAt, when it
@@ -100,6 +115,7 @@ type SpaceItem struct {
 // Insights and LargestFiles are each sorted largest first. Insights lie
 // inside the items, and LargestFiles anywhere below a folder's items, so
 // TotalBytes adds up the items only, never counting the same bytes twice.
+// An item with no size adds nothing, so TotalBytes is what could be read.
 // LargestFiles is set for a folder only, never for the overview.
 type MeasureResult struct {
 	Target       MeasureTarget `json:"target"`
@@ -118,6 +134,7 @@ type MeasuredItem struct {
 	Path        string
 	Bytes       int64
 	IsDir       bool
+	ReadState   ReadState
 	Insight     bool
 	Regenerable bool
 }
@@ -184,7 +201,7 @@ func (e *Engine) Measure(ctx context.Context, target MeasureTarget) (MeasureResu
 	}
 	for _, measured := range measurement.Items {
 		item := e.spaceItem(measured)
-		if measured.IsDir {
+		if measured.IsDir && measured.ReadState != ReadUnavailable {
 			item.Opens = &MeasureTarget{Kind: Folder, Path: measured.Path}
 		}
 		if measured.Insight {
@@ -219,13 +236,19 @@ func (e *Engine) spaceItem(measured MeasuredItem) SpaceItem {
 	if e.cleanHandles(measured.Path) {
 		tags = append(tags, TagCleanHandles)
 	}
+	bytes := measured.Bytes
+	if measured.ReadState == ReadUnavailable {
+		// Whatever the adapter reports for it, it must not reach the total.
+		bytes = 0
+	}
 	return SpaceItem{
-		ID:    itemID(measured.Path),
-		Name:  measured.Name,
-		Path:  measured.Path,
-		Bytes: measured.Bytes,
-		IsDir: measured.IsDir,
-		Tags:  tags,
+		ID:        itemID(measured.Path),
+		Name:      measured.Name,
+		Path:      measured.Path,
+		Bytes:     bytes,
+		IsDir:     measured.IsDir,
+		ReadState: measured.ReadState,
+		Tags:      tags,
 	}
 }
 

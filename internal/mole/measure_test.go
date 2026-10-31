@@ -50,15 +50,15 @@ cat '`+golden+`'
 		t.Fatal(err)
 	}
 	want := []space.MeasuredItem{
-		{Name: "User Library", Path: "/Users/test/Library", Bytes: 73074991104, IsDir: true},
-		{Name: "Home", Path: "/Users/test", Bytes: 46363366256, IsDir: true},
-		{Name: "Docker Data", Path: "/Users/test/Library/Containers/com.docker.docker/Data", Bytes: 21561749504, IsDir: true, Insight: true},
-		{Name: "Applications", Path: "/Applications", Bytes: 19704082432, IsDir: true},
-		{Name: "System Library", Path: "/Library", Bytes: 6834159616, IsDir: true},
-		{Name: "Xcode Simulators", Path: "/Users/test/Library/Developer/CoreSimulator/Devices", Bytes: 3065757696, IsDir: true, Insight: true},
-		{Name: "Old Downloads (90d+)", Path: "/Users/test/Downloads", Bytes: 3017911401, IsDir: true, Insight: true},
-		{Name: "Homebrew Cache", Path: "/Users/test/Library/Caches/Homebrew", Bytes: 181170176, IsDir: true, Insight: true},
-		{Name: "System Logs", Path: "/Users/test/Library/Logs", Bytes: 2109440, IsDir: true, Insight: true},
+		{Name: "User Library", Path: "/Users/test/Library", Bytes: 73074991104, IsDir: true, ReadState: space.ReadPartial},
+		{Name: "Home", Path: "/Users/test", Bytes: 46363366256, IsDir: true, ReadState: space.ReadPartial},
+		{Name: "Docker Data", Path: "/Users/test/Library/Containers/com.docker.docker/Data", Bytes: 21561749504, IsDir: true, Insight: true, ReadState: space.ReadComplete},
+		{Name: "Applications", Path: "/Applications", Bytes: 19704082432, IsDir: true, ReadState: space.ReadComplete},
+		{Name: "System Library", Path: "/Library", Bytes: 6834159616, IsDir: true, ReadState: space.ReadPartial},
+		{Name: "Xcode Simulators", Path: "/Users/test/Library/Developer/CoreSimulator/Devices", Bytes: 3065757696, IsDir: true, Insight: true, ReadState: space.ReadComplete},
+		{Name: "Old Downloads (90d+)", Path: "/Users/test/Downloads", Bytes: 3017911401, IsDir: true, Insight: true, ReadState: space.ReadComplete},
+		{Name: "Homebrew Cache", Path: "/Users/test/Library/Caches/Homebrew", Bytes: 181170176, IsDir: true, Insight: true, ReadState: space.ReadComplete},
+		{Name: "System Logs", Path: "/Users/test/Library/Logs", Bytes: 2109440, IsDir: true, Insight: true, ReadState: space.ReadComplete},
 	}
 	if !slices.Equal(measurement.Items, want) {
 		t.Errorf("items = %#v, want %#v", measurement.Items, want)
@@ -89,25 +89,105 @@ cat '`+golden+`'
 	// even when it points at one. A folder whose own name ends in " →"
 	// keeps it.
 	want := []space.MeasuredItem{
-		{Name: "app", Path: "/Users/test/Projects/app", Bytes: 3002368, IsDir: true},
-		{Name: "node_modules", Path: "/Users/test/Projects/node_modules", Bytes: 2400000, IsDir: true, Regenerable: true},
-		{Name: "Ảnh chụp", Path: "/Users/test/Projects/Ảnh chụp", Bytes: 1500000, IsDir: true},
-		{Name: "real", Path: "/Users/test/Projects/real", Bytes: 500000, IsDir: true},
-		{Name: `quote"and'apostrophe.txt`, Path: `/Users/test/Projects/quote"and'apostrophe.txt`, Bytes: 12000},
-		{Name: "Drafts →", Path: "/Users/test/Projects/Drafts →", Bytes: 9000, IsDir: true},
-		{Name: "emoji 📦", Path: "/Users/test/Projects/emoji 📦", Bytes: 700, IsDir: true},
-		{Name: "data link", Path: "/Users/test/Projects/data link"},
-		{Name: "shortcut", Path: "/Users/test/Projects/shortcut"},
+		{Name: "app", Path: "/Users/test/Projects/app", Bytes: 3002368, IsDir: true, ReadState: space.ReadComplete},
+		{Name: "node_modules", Path: "/Users/test/Projects/node_modules", Bytes: 2400000, IsDir: true, Regenerable: true, ReadState: space.ReadComplete},
+		{Name: "Ảnh chụp", Path: "/Users/test/Projects/Ảnh chụp", Bytes: 1500000, IsDir: true, ReadState: space.ReadComplete},
+		{Name: "real", Path: "/Users/test/Projects/real", Bytes: 500000, IsDir: true, ReadState: space.ReadComplete},
+		{Name: `quote"and'apostrophe.txt`, Path: `/Users/test/Projects/quote"and'apostrophe.txt`, Bytes: 12000, ReadState: space.ReadComplete},
+		{Name: "Drafts →", Path: "/Users/test/Projects/Drafts →", Bytes: 9000, IsDir: true, ReadState: space.ReadComplete},
+		{Name: "emoji 📦", Path: "/Users/test/Projects/emoji 📦", Bytes: 700, IsDir: true, ReadState: space.ReadComplete},
+		{Name: "data link", Path: "/Users/test/Projects/data link", ReadState: space.ReadComplete},
+		{Name: "shortcut", Path: "/Users/test/Projects/shortcut", ReadState: space.ReadComplete},
 	}
 	if !slices.Equal(measurement.Items, want) {
 		t.Errorf("items = %#v, want %#v", measurement.Items, want)
 	}
 	wantFiles := []space.MeasuredItem{
-		{Name: "app.dmg", Path: "/Users/test/Projects/app/build/app.dmg", Bytes: 2900000},
-		{Name: "IMG 0001.heic", Path: "/Users/test/Projects/Ảnh chụp/IMG 0001.heic", Bytes: 1500000},
+		{Name: "app.dmg", Path: "/Users/test/Projects/app/build/app.dmg", Bytes: 2900000, ReadState: space.ReadComplete},
+		{Name: "IMG 0001.heic", Path: "/Users/test/Projects/Ảnh chụp/IMG 0001.heic", Bytes: 1500000, ReadState: space.ReadComplete},
 	}
 	if !slices.Equal(measurement.LargestFiles, wantFiles) {
 		t.Errorf("largest files = %#v, want %#v", measurement.LargestFiles, wantFiles)
+	}
+}
+
+// Mole says of each row how much of it could be read. A folder it could not
+// read still lists; large_files carry no state, since Mole read them to find
+// them.
+func TestMeasurerTranslatesWhatTheBundledAnalyzerCouldNotRead(t *testing.T) {
+	golden, err := filepath.Abs("testdata/analyze-folder-unreadable.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundle := fakeAnalyzer(t, "#!/bin/sh\ncat '"+golden+"'\n")
+	measurer := NewMeasurer(bundle, "/Users/test", quietLogger())
+
+	measurement, err := measurer.Measure(context.Background(), space.MeasureTarget{Kind: space.Folder, Path: "/Users/test/Projects"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []space.MeasuredItem{
+		{Name: "mixed", Path: "/Users/test/Projects/mixed", Bytes: 2097152, IsDir: true, ReadState: space.ReadPartial},
+		{Name: "notes.txt", Path: "/Users/test/Projects/notes.txt", Bytes: 4096, ReadState: space.ReadComplete},
+		{Name: "locked", Path: "/Users/test/Projects/locked", IsDir: true, ReadState: space.ReadUnavailable},
+	}
+	if !slices.Equal(measurement.Items, want) {
+		t.Errorf("items = %#v, want %#v", measurement.Items, want)
+	}
+	wantFiles := []space.MeasuredItem{
+		{Name: "a.bin", Path: "/Users/test/Projects/mixed/open/a.bin", Bytes: 2097152, ReadState: space.ReadComplete},
+	}
+	if !slices.Equal(measurement.LargestFiles, wantFiles) {
+		t.Errorf("largest files = %#v, want %#v", measurement.LargestFiles, wantFiles)
+	}
+}
+
+// An Insight can be unreadable too: it stays listed.
+func TestMeasurerTranslatesWhatTheOverviewCouldNotRead(t *testing.T) {
+	golden, err := filepath.Abs("testdata/analyze-overview-unreadable.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundle := fakeAnalyzer(t, "#!/bin/sh\ncat '"+golden+"'\n")
+	measurer := NewMeasurer(bundle, "/Users/test", quietLogger())
+
+	measurement, err := measurer.Measure(context.Background(), space.MeasureTarget{Kind: space.Overview})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []space.MeasuredItem{
+		{Name: "User Library", Path: "/Users/test/Library", Bytes: 73074991104, IsDir: true, ReadState: space.ReadPartial},
+		{Name: "Applications", Path: "/Applications", Bytes: 19704082432, IsDir: true, ReadState: space.ReadComplete},
+		{Name: "iOS Backups", Path: "/Users/test/Library/Application Support/MobileSync/Backup", IsDir: true, Insight: true, ReadState: space.ReadUnavailable},
+	}
+	if !slices.Equal(measurement.Items, want) {
+		t.Errorf("items = %#v, want %#v", measurement.Items, want)
+	}
+}
+
+// Leaving a row out would lower the total without a word, and a change to
+// Mole's format could then pass a full folder off as empty.
+func TestMeasurerKeepsARowWhoseScanStatusItDoesNotKnow(t *testing.T) {
+	bundle := fakeAnalyzer(t, `#!/bin/sh
+cat <<'EOF'
+{"overview": false, "path": "/Users/test/Projects", "entries": [
+  {"scan_status": "pending", "name": "app", "path": "/Users/test/Projects/app", "size": 7, "is_dir": true},
+  {"name": "site", "path": "/Users/test/Projects/site", "size": 5, "is_dir": true}
+]}
+EOF
+`)
+	measurer := NewMeasurer(bundle, "/Users/test", quietLogger())
+
+	measurement, err := measurer.Measure(context.Background(), space.MeasureTarget{Kind: space.Folder, Path: "/Users/test/Projects"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []space.MeasuredItem{
+		{Name: "app", Path: "/Users/test/Projects/app", Bytes: 7, IsDir: true, ReadState: space.ReadPartial},
+		{Name: "site", Path: "/Users/test/Projects/site", Bytes: 5, IsDir: true, ReadState: space.ReadPartial},
+	}
+	if !slices.Equal(measurement.Items, want) {
+		t.Errorf("items = %#v, want %#v", measurement.Items, want)
 	}
 }
 
@@ -145,7 +225,7 @@ cat <<'EOF'
   {"name": "Climbs", "path": "/Users/test/../other", "size": 1, "is_dir": true},
   {"name": "Negative", "path": "/Users/test/Library", "size": -1, "is_dir": true},
   {"name": "", "path": "/Users/test/Nameless", "size": 1, "is_dir": true},
-  {"name": "Applications", "path": "/Applications", "size": 7, "is_dir": true}
+  {"scan_status": "complete", "name": "Applications", "path": "/Applications", "size": 7, "is_dir": true}
 ]}
 EOF
 `)
@@ -155,7 +235,7 @@ EOF
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []space.MeasuredItem{{Name: "Applications", Path: "/Applications", Bytes: 7, IsDir: true}}
+	want := []space.MeasuredItem{{Name: "Applications", Path: "/Applications", Bytes: 7, IsDir: true, ReadState: space.ReadComplete}}
 	if !slices.Equal(measurement.Items, want) {
 		t.Errorf("items = %#v, want %#v", measurement.Items, want)
 	}
@@ -167,10 +247,10 @@ func TestMeasurerLeavesOutFolderItemsOutsideTheFolder(t *testing.T) {
 	bundle := fakeAnalyzer(t, `#!/bin/sh
 cat <<'EOF'
 {"overview": false, "path": "/Users/test/Projects", "entries": [
-  {"name": "app", "path": "/Users/test/Projects/app", "size": 7, "is_dir": true},
-  {"name": "deeper", "path": "/Users/test/Projects/app/deeper", "size": 1, "is_dir": true},
-  {"name": "Projects", "path": "/Users/test/Projects", "size": 1, "is_dir": true},
-  {"name": "elsewhere", "path": "/Users/test/elsewhere", "size": 1, "is_dir": true}
+  {"scan_status": "complete", "name": "app", "path": "/Users/test/Projects/app", "size": 7, "is_dir": true},
+  {"scan_status": "complete", "name": "deeper", "path": "/Users/test/Projects/app/deeper", "size": 1, "is_dir": true},
+  {"scan_status": "complete", "name": "Projects", "path": "/Users/test/Projects", "size": 1, "is_dir": true},
+  {"scan_status": "complete", "name": "elsewhere", "path": "/Users/test/elsewhere", "size": 1, "is_dir": true}
 ]}
 EOF
 `)
@@ -180,7 +260,7 @@ EOF
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []space.MeasuredItem{{Name: "app", Path: "/Users/test/Projects/app", Bytes: 7, IsDir: true}}
+	want := []space.MeasuredItem{{Name: "app", Path: "/Users/test/Projects/app", Bytes: 7, IsDir: true, ReadState: space.ReadComplete}}
 	if !slices.Equal(measurement.Items, want) {
 		t.Errorf("items = %#v, want %#v", measurement.Items, want)
 	}
@@ -209,8 +289,8 @@ EOF
 		t.Fatal(err)
 	}
 	want := []space.MeasuredItem{
-		{Name: "deep.iso", Path: "/Users/test/Projects/app/deep.iso", Bytes: 9},
-		{Name: "top.iso", Path: "/Users/test/Projects/top.iso", Bytes: 7},
+		{Name: "deep.iso", Path: "/Users/test/Projects/app/deep.iso", Bytes: 9, ReadState: space.ReadComplete},
+		{Name: "top.iso", Path: "/Users/test/Projects/top.iso", Bytes: 7, ReadState: space.ReadComplete},
 	}
 	if !slices.Equal(measurement.LargestFiles, want) {
 		t.Errorf("largest files = %#v, want %#v", measurement.LargestFiles, want)
@@ -223,7 +303,7 @@ func TestMeasurerTranslatesRegenerableOverviewRows(t *testing.T) {
 	bundle := fakeAnalyzer(t, `#!/bin/sh
 cat <<'EOF'
 {"overview": true, "path": "/", "entries": [
-  {"name": "Xcode DerivedData", "path": "/Users/test/Library/Developer/Xcode/DerivedData", "size": 5, "is_dir": true, "insight": true, "cleanable": true}
+  {"scan_status": "complete", "name": "Xcode DerivedData", "path": "/Users/test/Library/Developer/Xcode/DerivedData", "size": 5, "is_dir": true, "insight": true, "cleanable": true}
 ], "large_files": [
   {"name": "big.iso", "path": "/Users/test/big.iso", "size": 9}
 ]}
@@ -236,7 +316,7 @@ EOF
 		t.Fatal(err)
 	}
 	want := []space.MeasuredItem{
-		{Name: "Xcode DerivedData", Path: "/Users/test/Library/Developer/Xcode/DerivedData", Bytes: 5, IsDir: true, Insight: true, Regenerable: true},
+		{Name: "Xcode DerivedData", Path: "/Users/test/Library/Developer/Xcode/DerivedData", Bytes: 5, IsDir: true, Insight: true, Regenerable: true, ReadState: space.ReadComplete},
 	}
 	if !slices.Equal(measurement.Items, want) {
 		t.Errorf("items = %#v, want %#v", measurement.Items, want)
