@@ -37,7 +37,10 @@ export function FullDiskAccessNotice({ retryStep }: Props) {
       className="flex w-full shrink-0 items-center gap-4 rounded-card border border-line bg-surface px-4 py-2.5"
     >
       {/* The next step replaces the explanation, so the notice never grows past two lines. */}
-      <p role="status" className={`min-w-0 flex-1 text-caption ${outcome ? OUTCOME_INK[outcome] : "text-ink-muted"}`}>
+      <p
+        role="status"
+        className={`min-w-0 flex-1 text-balance text-caption ${outcome ? OUTCOME_INK[outcome] : "text-ink-muted"}`}
+      >
         {outcome ? NEXT_STEP[outcome](retryStep) : strings.fullDiskAccess.explanation}
       </p>
       <button
