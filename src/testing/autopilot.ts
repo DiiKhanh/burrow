@@ -2,7 +2,7 @@
 // gets whole Scan and Clean runs without driving each step. Only
 // `vite --mode fake` installs it; Vitest drives `fakeGo` itself.
 import type { CleanProgress, CleanReport, LockedGroup, ScanProgress, ScanResult } from "../mygo";
-import { folderAt, overview } from "./measures";
+import { folderAt, overview, unreadableOverview } from "./measures";
 import type { CleanCall, FakeGo, MeasureCall, ScanCall } from "./mygo.fake";
 import { fullScan, longScan, unreadableScan } from "./scans";
 
@@ -115,8 +115,9 @@ async function runClean(call: CleanCall, scan: ScanResult, scenario: string | nu
 }
 
 /**
- * Runs a Measure by `?measure=`: `running` never ends, `failed` fails, and
- * any other value ends with the overview or the fake folder measured.
+ * Runs a Measure by `?measure=`: `running` never ends, `failed` fails,
+ * `unreadable` ends with an overview Mole could not read all of, and any
+ * other value ends with the overview or the fake folder measured.
  */
 async function runMeasure(call: MeasureCall, scenario: string | null) {
   if (scenario === "failed") {
@@ -124,7 +125,8 @@ async function runMeasure(call: MeasureCall, scenario: string | null) {
     return;
   }
   if (!(await stillRunning(call, 30)) || scenario === "running") return;
-  call.resolve(call.target.kind === "folder" ? folderAt(call.target) : overview);
+  if (call.target.kind === "folder") call.resolve(folderAt(call.target));
+  else call.resolve(scenario === "unreadable" ? unreadableOverview : overview);
 }
 
 function scanFor(scenario: string | null): ScanResult {

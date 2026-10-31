@@ -44,12 +44,20 @@ type analyzeOutput struct {
 // first three fields only. Mole sets cleanable on a folder `mo clean` leaves
 // alone whose content is regenerable.
 type analyzeEntry struct {
-	Name      string `json:"name"`
-	Path      string `json:"path"`
-	Size      int64  `json:"size"`
-	IsDir     bool   `json:"is_dir"`
-	Insight   bool   `json:"insight"`
-	Cleanable bool   `json:"cleanable"`
+	Name       string `json:"name"`
+	Path       string `json:"path"`
+	Size       int64  `json:"size"`
+	ScanStatus string `json:"scan_status"`
+	IsDir      bool   `json:"is_dir"`
+	Insight    bool   `json:"insight"`
+	Cleanable  bool   `json:"cleanable"`
+}
+
+// readStates translates the scan_status of a row of entries.
+var readStates = map[string]space.ReadState{
+	"complete":    space.ReadComplete,
+	"partial":     space.ReadPartial,
+	"unavailable": space.ReadUnavailable,
 }
 
 // symlinkSuffix is what Mole appends to a symlink's name in a folder.
@@ -115,6 +123,7 @@ func (m *Measurer) overview(entries []analyzeEntry) space.Measurement {
 			Path:        entry.Path,
 			Bytes:       entry.Size,
 			IsDir:       entry.IsDir,
+			ReadState:   m.readState(entry),
 			Insight:     entry.Insight,
 			Regenerable: entry.Cleanable,
 		})
@@ -143,6 +152,7 @@ func (m *Measurer) folder(folder string, entries, largeFiles []analyzeEntry) spa
 			Path:        entry.Path,
 			Bytes:       entry.Size,
 			IsDir:       entry.IsDir && !isLink,
+			ReadState:   m.readState(entry),
 			Regenerable: entry.Cleanable && !isLink,
 			ModTime:     m.modTime(entry.Path),
 		})
@@ -158,7 +168,8 @@ func (m *Measurer) folder(folder string, entries, largeFiles []analyzeEntry) spa
 			m.logger.Warn("ignoring disk analyzer large file outside the folder", "folder", folder, "path", file.Path)
 			continue
 		}
-		files = append(files, space.MeasuredItem{Name: filepath.Base(file.Path), Path: file.Path, Bytes: file.Size})
+		// Mole read a large file to find it, so its size is whole.
+		files = append(files, space.MeasuredItem{Name: filepath.Base(file.Path), Path: file.Path, Bytes: file.Size, ReadState: space.ReadComplete})
 	}
 	return space.Measurement{Items: items, LargestFiles: files}
 }
@@ -172,6 +183,17 @@ func (m *Measurer) modTime(path string) time.Time {
 		return time.Time{}
 	}
 	return info.ModTime()
+}
+
+// readState is how much of a row of entries Mole read. A status Burrow does
+// not know keeps the row, with a warning, as a partial read: its size may be
+// low, and leaving it out would lower the total without a word.
+func (m *Measurer) readState(entry analyzeEntry) space.ReadState {
+	if state, known := readStates[entry.ScanStatus]; known {
+		return state
+	}
+	m.logger.Warn("disk analyzer entry with an unknown scan status", "path", entry.Path, "scan_status", entry.ScanStatus)
+	return space.ReadPartial
 }
 
 // trusted is false, with a warning, for an entry whose path or size cannot

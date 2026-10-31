@@ -29,12 +29,12 @@ const home = "/Users/test"
 // locations and insights mixed, insights inside the locations.
 func overviewMeasurement() Measurement {
 	return Measurement{Items: []MeasuredItem{
-		{Name: "Home", Path: home, Bytes: 46_000_000_000, IsDir: true},
-		{Name: "Docker Data", Path: home + "/Library/Containers/com.docker.docker/Data", Bytes: 21_000_000_000, IsDir: true, Insight: true},
-		{Name: "User Library", Path: home + "/Library", Bytes: 73_000_000_000, IsDir: true},
-		{Name: "System Library", Path: "/Library", Bytes: 6_800_000_000, IsDir: true},
-		{Name: "Old Downloads (90d+)", Path: home + "/Downloads", Bytes: 3_000_000_000, IsDir: true, Insight: true},
-		{Name: "Applications", Path: "/Applications", Bytes: 19_000_000_000, IsDir: true},
+		{Name: "Home", Path: home, Bytes: 46_000_000_000, IsDir: true, ReadState: ReadComplete},
+		{Name: "Docker Data", Path: home + "/Library/Containers/com.docker.docker/Data", Bytes: 21_000_000_000, IsDir: true, Insight: true, ReadState: ReadComplete},
+		{Name: "User Library", Path: home + "/Library", Bytes: 73_000_000_000, IsDir: true, ReadState: ReadComplete},
+		{Name: "System Library", Path: "/Library", Bytes: 6_800_000_000, IsDir: true, ReadState: ReadComplete},
+		{Name: "Old Downloads (90d+)", Path: home + "/Downloads", Bytes: 3_000_000_000, IsDir: true, Insight: true, ReadState: ReadComplete},
+		{Name: "Applications", Path: "/Applications", Bytes: 19_000_000_000, IsDir: true, ReadState: ReadComplete},
 	}}
 }
 
@@ -71,6 +71,39 @@ func TestMeasureOverviewTotalAddsUpTheLocationsOnly(t *testing.T) {
 	}
 	if want := int64(144_800_000_000); result.TotalBytes != want {
 		t.Errorf("totalBytes = %d, want %d", result.TotalBytes, want)
+	}
+}
+
+// Measure finishes what it can read. A Space item it could not read has no
+// size to show or add up, and nothing to open, since measuring it only
+// fails.
+func TestMeasureKeepsWhatItCouldNotReadOutOfTheTotal(t *testing.T) {
+	folder := home + "/Projects"
+	engine := NewEngine(Options{Measurer: &fakeMeasurer{measurement: Measurement{Items: []MeasuredItem{
+		{Name: "locked", Path: folder + "/locked", Bytes: 9_000, IsDir: true, ReadState: ReadUnavailable},
+		{Name: "mixed", Path: folder + "/mixed", Bytes: 2_000, IsDir: true, ReadState: ReadPartial},
+		{Name: "notes.txt", Path: folder + "/notes.txt", Bytes: 1_000, ReadState: ReadComplete},
+	}}}})
+
+	result, err := engine.Measure(context.Background(), MeasureTarget{Kind: Folder, Path: folder})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := int64(3_000); result.TotalBytes != want {
+		t.Errorf("totalBytes = %d, want %d", result.TotalBytes, want)
+	}
+	if want := []string{"mixed", "notes.txt", "locked"}; !slices.Equal(names(result.Items), want) {
+		t.Fatalf("items = %v, want %v", names(result.Items), want)
+	}
+	mixed, locked := result.Items[0], result.Items[2]
+	if mixed.ReadState != ReadPartial || mixed.Bytes != 2_000 || mixed.Opens == nil {
+		t.Errorf("mixed = %+v, want a partial read that keeps its size and opens", mixed)
+	}
+	if locked.ReadState != ReadUnavailable || locked.Bytes != 0 || locked.Opens != nil {
+		t.Errorf("locked = %+v, want unavailable, with no size, opening nothing", locked)
+	}
+	if path, ok := engine.measuredPath(locked.ID); !ok || path != locked.Path {
+		t.Errorf("id of locked resolves to %q, %v; want its path, for Reveal", path, ok)
 	}
 }
 
@@ -149,13 +182,13 @@ func TestMeasurePassesOnTheMeasurersError(t *testing.T) {
 func folderMeasurement() Measurement {
 	return Measurement{
 		Items: []MeasuredItem{
-			{Name: "notes.txt", Path: home + "/Projects/app/notes.txt", Bytes: 4_000},
-			{Name: "node_modules", Path: home + "/Projects/app/node_modules", Bytes: 900_000_000, IsDir: true, Regenerable: true},
-			{Name: "build", Path: home + "/Projects/app/build", Bytes: 2_000_000_000, IsDir: true, Regenerable: true},
+			{Name: "notes.txt", Path: home + "/Projects/app/notes.txt", Bytes: 4_000, ReadState: ReadComplete},
+			{Name: "node_modules", Path: home + "/Projects/app/node_modules", Bytes: 900_000_000, IsDir: true, Regenerable: true, ReadState: ReadComplete},
+			{Name: "build", Path: home + "/Projects/app/build", Bytes: 2_000_000_000, IsDir: true, Regenerable: true, ReadState: ReadComplete},
 		},
 		LargestFiles: []MeasuredItem{
-			{Name: "bundle.js", Path: home + "/Projects/app/build/bundle.js", Bytes: 300_000_000},
-			{Name: "app.dmg", Path: home + "/Projects/app/build/app.dmg", Bytes: 1_200_000_000},
+			{Name: "bundle.js", Path: home + "/Projects/app/build/bundle.js", Bytes: 300_000_000, ReadState: ReadComplete},
+			{Name: "app.dmg", Path: home + "/Projects/app/build/app.dmg", Bytes: 1_200_000_000, ReadState: ReadComplete},
 		},
 	}
 }

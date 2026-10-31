@@ -197,3 +197,38 @@ test("reveals any row in Finder, outside Home too, without opening it", async ({
   const targets = await page.evaluate(() => window.burrowFake?.measure.calls.map((call) => call.target));
   expect(targets).toEqual([{ kind: "overview" }, { kind: "folder", path: "/Users/test", excludeLibrary: true }]);
 });
+
+test("shows what the overview could not read and opens Full Disk Access", async ({ page }) => {
+  await page.goto("/?measure=unreadable");
+  await page.keyboard.press("Meta+3");
+
+  await expect(page.getByRole("region", { name: "Locations" }).getByRole("listitem").first()).toHaveText(
+    "User LibraryRevealPartly unreadable73.1 GB›",
+  );
+  await expect(page.getByRole("region", { name: "Insights" }).getByRole("listitem").last()).toHaveText(
+    "iOS BackupsInsightRevealProtected access unavailable",
+  );
+  await expect(page.getByRole("button", { name: "Open iOS Backups" })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Open System Settings" }).click();
+  await expect(page.getByText("Turn on Burrow in Full Disk Access, then measure again.")).toBeVisible();
+});
+
+test("lists a folder's readable rows beside the ones it could not read", async ({ page }) => {
+  await page.goto("/?settings=fallback");
+  await page.keyboard.press("Meta+3");
+  await expect(page.getByRole("region", { name: "Full Disk Access" })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Open User Library" }).click();
+
+  await expect(page.getByText("66.3 GB in this folder")).toBeVisible();
+  await expect(page.getByRole("region", { name: "Contents" }).getByRole("listitem")).toHaveText([
+    "Application SupportRevealPartly unreadable41.2 GB›",
+    "DeveloperReveal25.1 GB›",
+    "MailRevealProtected access unavailable",
+  ]);
+  await page.getByRole("button", { name: "Open System Settings" }).click();
+  await expect(
+    page.getByText("In Privacy & Security, scroll to Full Disk Access, turn on Burrow, then measure again."),
+  ).toBeVisible();
+});

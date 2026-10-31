@@ -14,11 +14,30 @@ const WITHOUT_LIBRARY: Narrowing = { excludeLibrary: true };
 const OLD: Narrowing = { olderThanDays: 90 };
 
 function item(name: string, path: string, bytes: number, tags: Tag[] = [], narrowing: Narrowing = {}): SpaceItem {
-  return { id: `id:${path}`, name, path, bytes, isDir: true, tags, opens: { kind: "folder", path, ...narrowing } };
+  return {
+    id: `id:${path}`,
+    name,
+    path,
+    bytes,
+    isDir: true,
+    readState: "complete",
+    tags,
+    opens: { kind: "folder", path, ...narrowing },
+  };
 }
 
 function file(name: string, path: string, bytes: number, tags: Tag[] = []): SpaceItem {
-  return { id: `id:${path}`, name, path, bytes, isDir: false, tags, opens: null };
+  return { id: `id:${path}`, name, path, bytes, isDir: false, readState: "complete", tags, opens: null };
+}
+
+/** A folder Mole could read only part of: its size may be low. */
+function partly(name: string, path: string, bytes: number): SpaceItem {
+  return { ...item(name, path, bytes), readState: "partial" };
+}
+
+/** A folder Mole could not read: no size, and nothing to open. */
+function unreadable(name: string, path: string, tags: Tag[] = []): SpaceItem {
+  return { ...item(name, path, 0, tags), readState: "unavailable", opens: null };
 }
 
 /** The same in the overview's row and inside it, as is OLD_DOWNLOADS_BYTES. */
@@ -45,6 +64,18 @@ export const overview: MeasureResult = {
     item("System Logs", `${HOME}/Library/Logs`, 2.1 * MB, ["insight", "clean-handles"]),
   ],
   totalBytes: 145_930_012_000,
+};
+
+/** An overview Mole could not read all of: one location read in part, one Insight not at all. */
+export const unreadableOverview: MeasureResult = {
+  ...overview,
+  items: locations.map((location) =>
+    location.name === "User Library" ? partly(location.name, location.path, location.bytes) : location,
+  ),
+  insights: [
+    ...overview.insights,
+    unreadable("iOS Backups", `${HOME}/Library/Application Support/MobileSync/Backup`, ["insight"]),
+  ],
 };
 
 function folder(
@@ -136,7 +167,33 @@ export const burrowFolder = folder(
   [file("Burrow.dmg", `${HOME}/Projects/burrow/release/Burrow.dmg`, 1.2 * GB)],
 );
 
-const KNOWN_FOLDERS = [homeFolder, oldDownloadsFolder, downloadsFolder, projectsFolder, burrowFolder];
+/** The User Library, with one folder read in part and one not at all. */
+export const libraryFolder = folder(
+  `${HOME}/Library`,
+  [
+    partly("Application Support", `${HOME}/Library/Application Support`, 41.2 * GB),
+    item("Developer", `${HOME}/Library/Developer`, 25.1 * GB),
+    unreadable("Mail", `${HOME}/Library/Mail`),
+  ],
+  66.3 * GB,
+);
+
+/** A folder read in part, with nothing Mole could not read at all. */
+export const partlyReadFolder = folder(
+  "/Library",
+  [partly("Application Support", "/Library/Application Support", 4.1 * GB), item("Fonts", "/Library/Fonts", 2.7 * GB)],
+  6.8 * GB,
+);
+
+const KNOWN_FOLDERS = [
+  homeFolder,
+  oldDownloadsFolder,
+  downloadsFolder,
+  projectsFolder,
+  burrowFolder,
+  libraryFolder,
+  partlyReadFolder,
+];
 
 /** The fake Measure of target: one of the folders above, or else nothing. */
 export function folderAt(target: MeasureTarget): MeasureResult {
