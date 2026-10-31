@@ -255,6 +255,7 @@ export const strings = {
       separator: "/",
     },
     measureAgain: "Measure again",
+    stale: "Measured before last clean",
     /** A row's button, which measures the folder it shows. */
     open: (name: string) => `Open ${name}`,
     chevron: "›",

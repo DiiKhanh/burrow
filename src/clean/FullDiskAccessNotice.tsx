@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Privacy, type SettingsPane } from "../mygo";
+import { Notice } from "../shell/Notice";
 import { strings } from "../strings";
 
 /** What the user still has to do after the button, by what opened. */
@@ -27,21 +28,14 @@ export function FullDiskAccessNotice() {
     Privacy.openFullDiskAccess().then(setOutcome, () => setOutcome("failed"));
   };
   return (
-    <section
-      aria-label={strings.clean.fullDiskAccess.label}
-      className="flex w-full shrink-0 items-center gap-4 rounded-card border border-line bg-surface px-4 py-2.5"
+    <Notice
+      label={strings.clean.fullDiskAccess.label}
+      action={strings.clean.fullDiskAccess.action}
+      onAction={open}
+      ink={outcome ? OUTCOME_INK[outcome] : undefined}
     >
       {/* The next step replaces the explanation, so the notice never grows past two lines. */}
-      <p role="status" className={`min-w-0 flex-1 text-caption ${outcome ? OUTCOME_INK[outcome] : "text-ink-muted"}`}>
-        {outcome ? NEXT_STEP[outcome] : strings.clean.fullDiskAccess.explanation}
-      </p>
-      <button
-        type="button"
-        onClick={open}
-        className="shrink-0 rounded-full border border-line-strong px-3 py-1 text-caption text-ink hover:bg-surface-raised"
-      >
-        {strings.clean.fullDiskAccess.action}
-      </button>
-    </section>
+      {outcome ? NEXT_STEP[outcome] : strings.clean.fullDiskAccess.explanation}
+    </Notice>
   );
 }

@@ -1,4 +1,12 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
+
+/** Runs a Scan and Cleans its default selection from the Clean tab, until the Clean's summary shows. */
+async function cleanFromTab(page: Page) {
+  await page.keyboard.press("Meta+1");
+  await page.getByRole("button", { name: "Start scan" }).click();
+  await page.getByRole("button", { name: "Clean 13 items →" }).click();
+  await expect(page.getByRole("region", { name: "Clean summary" })).toBeVisible();
+}
 
 test("measures the overview when Space opens and cancels it", async ({ page }) => {
   await page.goto("/?measure=running");
@@ -172,4 +180,61 @@ test("reveals any row in Finder, outside Home too, without opening it", async ({
   expect(revealed).toEqual(["id:/Applications", "id:/Users/test/Movies/Trip 2025.mov"]);
   const targets = await page.evaluate(() => window.burrowFake?.measure.calls.map((call) => call.target));
   expect(targets).toEqual([{ kind: "overview" }, { kind: "folder", path: "/Users/test" }]);
+});
+
+test("marks the overview after a Clean, under its total, until measured again", async ({ page }) => {
+  await page.goto("/");
+  await page.keyboard.press("Meta+3");
+  await expect(page.getByText("146 GB measured on this Mac")).toBeVisible();
+  const notice = page.getByRole("region", { name: "Measured before last clean" });
+  await expect(notice).toHaveCount(0);
+
+  await cleanFromTab(page);
+  await page.keyboard.press("Meta+3");
+
+  await expect(notice).toBeVisible();
+  const totalBottom = await page
+    .getByText("146 GB measured on this Mac")
+    .evaluate((total) => total.getBoundingClientRect().bottom);
+  const noticeBox = await notice.boundingBox();
+  const insightsTop = (await page.getByRole("region", { name: "Insights" }).boundingBox())?.y ?? 0;
+  expect(noticeBox?.y).toBeGreaterThanOrEqual(totalBottom);
+  expect((noticeBox?.y ?? 0) + (noticeBox?.height ?? 0)).toBeLessThanOrEqual(insightsTop);
+
+  await notice.getByRole("button", { name: "Measure again" }).click();
+
+  await expect(page.getByText("146 GB measured on this Mac")).toBeVisible();
+  await expect(notice).toHaveCount(0);
+  const targets = await page.evaluate(() => window.burrowFake?.measure.calls.map((call) => call.target));
+  expect(targets).toEqual([{ kind: "overview" }, { kind: "overview" }]);
+});
+
+test("marks each folder measured before a Clean, apart from the ones measured again", async ({ page }) => {
+  await page.goto("/");
+  await page.keyboard.press("Meta+3");
+  await page.getByRole("button", { name: "Open Home", exact: true }).click();
+  await expect(page.getByText("46.3 GB in this folder")).toBeVisible();
+
+  await cleanFromTab(page);
+  await page.keyboard.press("Meta+3");
+
+  const notice = page.getByRole("region", { name: "Measured before last clean" });
+  await expect(page.getByText("46.3 GB in this folder")).toBeVisible();
+  await notice.getByRole("button", { name: "Measure again" }).click();
+  await expect(page.getByText("46.3 GB in this folder")).toBeVisible();
+  await expect(notice).toHaveCount(0);
+
+  await page.getByRole("navigation", { name: "Folders" }).getByRole("button", { name: "This Mac" }).click();
+  await expect(page.getByText("146 GB measured on this Mac")).toBeVisible();
+  await expect(notice).toBeVisible();
+});
+
+test("does not mark what is measured after a Clean", async ({ page }) => {
+  await page.goto("/");
+  await cleanFromTab(page);
+
+  await page.keyboard.press("Meta+3");
+
+  await expect(page.getByText("146 GB measured on this Mac")).toBeVisible();
+  await expect(page.getByRole("region", { name: "Measured before last clean" })).toHaveCount(0);
 });
