@@ -64,6 +64,14 @@ _Avoid_: Scan, analyze, index
 One file or folder shown in Space with its size. Unlike a junk item, nothing proposed it for removal.
 _Avoid_: Entry, node, junk item
 
+**Unreadable Space item**:
+A Space item a Measure could not read at all, shown as "Protected access unavailable" with no size, left out of the total, and not opened. Mole does not say why, so the cause may be something other than macOS privacy protection, such as the folder's own permissions.
+_Avoid_: Blocked item, empty item
+
+**Partly unreadable Space item**:
+A Space item a Measure could read only part of, shown with its size and a "Partly unreadable" note: the size may be low.
+_Avoid_: Partial item, incomplete item
+
 **Insight**:
 A named location that Mole flags as commonly taking hidden space (e.g. iOS Backups, Old Downloads), shown in the Space overview.
 _Avoid_: Suggestion, hint, hotspot

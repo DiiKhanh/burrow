@@ -2,7 +2,7 @@ import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { App } from "../App";
-import { folderAt, homeFolder, overview } from "../testing/measures";
+import { folderAt, homeFolder, libraryFolder, overview, unreadableOverview } from "../testing/measures";
 import { fakeGo } from "../testing/mygo.fake";
 
 async function openSpace() {
@@ -369,5 +369,87 @@ describe("Space Reveal in Finder", () => {
     await act(async () => fakeGo.reveal.last.reject());
 
     expect(screen.getByRole("region", { name: "Locations" })).toBeVisible();
+  });
+});
+
+describe("Space with what a Measure could not read", () => {
+  async function openLibrary() {
+    const user = await openOverview();
+    await openFolder(user, "User Library", `${HOME}/Library`);
+    return user;
+  }
+
+  it("shows Protected access unavailable in place of a size", async () => {
+    await openLibrary();
+
+    expect(rowsOf("Contents")).toEqual([
+      "Application SupportRevealPartly unreadable41.2 GB›",
+      "DeveloperReveal25.1 GB›",
+      "MailRevealProtected access unavailable",
+    ]);
+  });
+
+  it("offers nothing to open for a folder it could not read, but still reveals it", async () => {
+    const user = await openLibrary();
+
+    expect(screen.queryByRole("button", { name: "Open Mail" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Reveal Mail in Finder" }));
+    expect(fakeGo.reveal.last.id).toBe(`id:${HOME}/Library/Mail`);
+  });
+
+  it("still opens a folder read in part", async () => {
+    await openLibrary();
+
+    expect(screen.getByRole("button", { name: "Open Application Support" })).toBeVisible();
+  });
+
+  it("marks Insights and locations in the overview", async () => {
+    await openSpace();
+    await act(async () => fakeGo.measure.last.resolve(unreadableOverview));
+
+    expect(rowsOf("Locations")[0]).toBe("User LibraryRevealPartly unreadable73.1 GB›");
+    expect(rowsOf("Insights").at(-1)).toBe("iOS BackupsInsightRevealProtected access unavailable");
+  });
+
+  it("opens Full Disk Access and says to measure again", async () => {
+    const user = await openLibrary();
+
+    await user.click(screen.getByRole("button", { name: "Open System Settings" }));
+    act(() => fakeGo.privacy.last.resolve("full-disk-access"));
+
+    expect(await screen.findByText("Turn on Burrow in Full Disk Access, then measure again.")).toBeVisible();
+  });
+
+  it("walks the user to Full Disk Access when only Privacy & Security opened", async () => {
+    const user = await openLibrary();
+
+    await user.click(screen.getByRole("button", { name: "Open System Settings" }));
+    act(() => fakeGo.privacy.last.resolve("privacy-security"));
+
+    expect(
+      await screen.findByText("In Privacy & Security, scroll to Full Disk Access, turn on Burrow, then measure again."),
+    ).toBeVisible();
+  });
+
+  it("gives no total for a folder it could read nothing in", async () => {
+    const user = await openOverview();
+    await user.click(screen.getByRole("button", { name: "Open User Library" }));
+    const items = libraryFolder.items.filter((item) => item.readState === "unavailable");
+
+    await act(async () => fakeGo.measure.last.resolve({ ...libraryFolder, items, totalBytes: 0 }));
+
+    expect(screen.queryByText(/in this folder/)).not.toBeInTheDocument();
+    expect(rowsOf("Contents")).toEqual(["MailRevealProtected access unavailable"]);
+    expect(screen.getByRole("button", { name: "Open System Settings" })).toBeVisible();
+  });
+
+  it("asks for Full Disk Access only when an item could not be read at all", async () => {
+    const user = await openOverview();
+    expect(screen.queryByRole("region", { name: "Full Disk Access" })).not.toBeInTheDocument();
+
+    await openFolder(user, "System Library", "/Library");
+
+    expect(rowsOf("Contents")[0]).toBe("Application SupportRevealPartly unreadable4.1 GB›");
+    expect(screen.queryByRole("region", { name: "Full Disk Access" })).not.toBeInTheDocument();
   });
 });

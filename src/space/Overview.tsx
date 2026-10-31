@@ -2,6 +2,7 @@ import type { MeasureResult, SpaceItem } from "../mygo";
 import { strings } from "../strings";
 import { ItemSection } from "./ItemSection";
 import { Total } from "./Total";
+import { UnreadableNotice } from "./UnreadableNotice";
 
 type Props = { result: MeasureResult; onOpen: (item: SpaceItem) => void };
 
@@ -9,7 +10,8 @@ type Props = { result: MeasureResult; onOpen: (item: SpaceItem) => void };
 export function Overview({ result, onOpen }: Props) {
   return (
     <>
-      <Total bytes={result.totalBytes} label={strings.space.overview.total} />
+      <Total bytes={result.totalBytes} label={strings.space.overview.total} items={result.items} />
+      <UnreadableNotice result={result} />
       {result.insights.length > 0 && (
         <ItemSection
           title={strings.space.overview.insights}

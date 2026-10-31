@@ -87,6 +87,61 @@ func TestIntegrationBundledAnalyzeDrillsDownTheGeneratedHome(t *testing.T) {
 	}
 }
 
+// What the real analyzer prints for a folder it cannot list, and for one
+// holding such a folder. Mode 000 stands in for macOS privacy protection.
+func TestIntegrationBundledAnalyzeReportsWhatItCouldNotRead(t *testing.T) {
+	home := t.TempDir()
+	projects := filepath.Join(home, "Projects")
+	locked := filepath.Join(projects, "locked")
+	secret := filepath.Join(projects, "mixed", "secret")
+	readable := filepath.Join(projects, "mixed", "open")
+	for _, dir := range []string{locked, secret, readable} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(readable, "a.bin"), bytes.Repeat([]byte{1}, 1<<20), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(locked, "b.bin"), bytes.Repeat([]byte{2}, 1<<20), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, dir := range []string{locked, secret} {
+		if err := os.Chmod(dir, 0); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			if err := os.Chmod(dir, 0o755); err != nil {
+				t.Error(err)
+			}
+		})
+	}
+	engine := space.NewEngine(space.Options{Measurer: NewMeasurer(bundled(t), home, quietLogger()), Home: home})
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+
+	result, err := engine.Measure(ctx, space.MeasureTarget{Kind: space.Folder, Path: projects})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mixed := itemNamed(t, result, "mixed")
+	if mixed.ReadState != space.ReadPartial || mixed.Bytes < 1<<20 || mixed.Opens == nil {
+		t.Errorf("mixed = %+v, want a partial read of at least 1 MiB that opens", mixed)
+	}
+	unreadable := itemNamed(t, result, "locked")
+	if unreadable.ReadState != space.ReadUnavailable || unreadable.Bytes != 0 || unreadable.Opens != nil {
+		t.Errorf("locked = %+v, want unavailable, with no size, opening nothing", unreadable)
+	}
+	if result.TotalBytes != mixed.Bytes {
+		t.Errorf("totalBytes = %d, want mixed's %d alone", result.TotalBytes, mixed.Bytes)
+	}
+
+	// Why an unavailable folder opens nothing: its own Measure can only fail.
+	if _, err := engine.Measure(ctx, space.MeasureTarget{Kind: space.Folder, Path: locked}); err == nil {
+		t.Error("Measure of the locked folder succeeded, want the analyzer's failure")
+	}
+}
+
 func itemNamed(t *testing.T, result space.MeasureResult, name string) space.SpaceItem {
 	t.Helper()
 	for _, item := range result.Items {
