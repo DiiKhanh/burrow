@@ -12,6 +12,13 @@ const dayOfYear = new Intl.DateTimeFormat("en-US", { month: "short", day: "numer
 /** "Firefox, Safari, and Arc". */
 const andList = new Intl.ListFormat("en-US", { type: "conjunction" });
 
+/** "Safari is open. Quit it to clean.": what a lock asks of the user. */
+function quitToAct(apps: readonly string[], action: string): string {
+  return apps.length === 1
+    ? `${andList.format(apps)} is open. Quit it to ${action}.`
+    : `${andList.format(apps)} are open. Quit them to ${action}.`;
+}
+
 /** "21 days": the largest whole unit only. */
 function duration(seconds: number): string {
   if (seconds < 60) return plural(seconds, "second", "seconds");
@@ -96,10 +103,7 @@ export const strings = {
       /** What to do once Full Disk Access is on. */
       retryStep: "scan again",
       /** Why a locked junk group cannot be selected: "Safari is open. Quit it to clean." */
-      locked: (apps: readonly string[]) =>
-        apps.length === 1
-          ? `${andList.format(apps)} is open. Quit it to clean.`
-          : `${andList.format(apps)} are open. Quit them to clean.`,
+      locked: (apps: readonly string[]) => quitToAct(apps, "clean"),
     },
     groups: {
       appCaches: { name: "App Caches", description: "Temporary files apps rebuild on next launch." },
@@ -283,6 +287,8 @@ export const strings = {
         why: "Burrow leaves the top of your home folder alone: pick inside a folder instead",
       },
     } satisfies Record<Exclude<BlockReason, "clean-handles">, { label: string; why: string }>,
+    /** Why a locked Space item cannot be picked: "Docker is open. Quit it to move this." */
+    locked: (apps: readonly string[]) => quitToAct(apps, "move this"),
     /** A row's checkbox: "Pick node_modules". */
     pick: (name: string) => `Pick ${name}`,
     reveal: "Reveal",

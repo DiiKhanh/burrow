@@ -1,8 +1,8 @@
 import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { App } from "../App";
-import type { SkipReason, TrashReport } from "../mygo";
+import type { LockedItem, SkipReason, TrashReport } from "../mygo";
 import { burrowFolder, downloadsFolder, folderAt, overview } from "../testing/measures";
 import { fakeGo, type TrashCall } from "../testing/mygo.fake";
 
@@ -562,5 +562,189 @@ describe("Space sizes after Move to Trash", () => {
     expect(screen.getByRole("region", { name: "Move to Trash result" })).toHaveTextContent(
       "0 moved · 1 skipped: dist (already gone)",
     );
+  });
+});
+
+describe("Space items a running app locks", () => {
+  const DOCKER: LockedItem = { path: `${HOME}/Library/Containers/com.docker.docker/Data`, app: "Docker" };
+  const SIMULATOR: LockedItem = { path: `${HOME}/Library/Developer/CoreSimulator/Devices`, app: "Simulator" };
+  const DOCKER_LINE = "Docker is open. Quit it to move this.";
+
+  /** Answers the page's latest ask for the locks. */
+  const answerLocked = (locks: LockedItem[]) =>
+    act(async () => {
+      fakeGo.spaceLocked.last.resolve(locks);
+      await Promise.resolve();
+    });
+
+  /** Waits for the page to ask again, about a second on, and answers. */
+  async function answerNextLocked(locks: LockedItem[]) {
+    const asked = fakeGo.spaceLocked.calls.length;
+    await vi.waitFor(() => expect(fakeGo.spaceLocked.calls.length).toBeGreaterThan(asked), { timeout: 2_000 });
+    await answerLocked(locks);
+  }
+
+  it("says which app to quit and cannot be picked", async () => {
+    await openOverview();
+
+    await answerLocked([DOCKER]);
+
+    expect(within(row("Insights", "Docker Data")).getByText(DOCKER_LINE)).toBeVisible();
+    expect(pickBox("Docker Data")).toBeDisabled();
+    expect(pickBox("Docker Data")).not.toBeChecked();
+    expect(pickBox("Xcode Simulators")).toBeEnabled();
+  });
+
+  it("unlocks once the app quits, without a new Measure", async () => {
+    await openOverview();
+    await answerLocked([DOCKER]);
+    const measured = fakeGo.measure.calls.length;
+
+    await answerNextLocked([]);
+
+    expect(screen.queryByText(DOCKER_LINE)).not.toBeInTheDocument();
+    expect(pickBox("Docker Data")).toBeEnabled();
+    expect(fakeGo.measure.calls).toHaveLength(measured);
+  });
+
+  it("locks what lies inside a locked item, largest files too", async () => {
+    const user = await openOverview();
+    await answerLocked([DOCKER]);
+
+    await open(user, "Docker Data");
+
+    for (const name of ["vms", "log", "Docker.raw"]) {
+      expect(pickBox(name)).toBeDisabled();
+    }
+    expect(screen.getAllByText(DOCKER_LINE)).toHaveLength(3);
+  });
+
+  it("locks a folder that holds a locked item: moving it would take the live data", async () => {
+    const user = await openOverview();
+    await answerLocked([SIMULATOR]);
+
+    await open(user, "User Library");
+
+    expect(within(row("Contents", "Developer")).getByText("Simulator is open. Quit it to move this.")).toBeVisible();
+    expect(pickBox("Developer")).toBeDisabled();
+  });
+
+  it("names every app a folder's locked items belong to", async () => {
+    const user = await openOverview();
+    await answerLocked([
+      { path: `${HOME}/Library/Developer/first`, app: "Docker" },
+      { path: `${HOME}/Library/Developer/second`, app: "OrbStack" },
+    ]);
+
+    await open(user, "User Library");
+
+    expect(
+      within(row("Contents", "Developer")).getByText("Docker and OrbStack are open. Quit them to move this."),
+    ).toBeVisible();
+  });
+
+  it("leaves a look-alike path alone", async () => {
+    await openOverview();
+
+    await answerLocked([{ ...DOCKER, path: `${DOCKER.path} old` }]);
+
+    expect(pickBox("Docker Data")).toBeEnabled();
+  });
+
+  it("says nothing on a row that could not be picked anyway", async () => {
+    await openOverview();
+
+    await answerLocked([DOCKER]);
+
+    expect(row("Locations", "User Library")).not.toHaveTextContent("is open");
+  });
+
+  it("keeps a pick out of the button while its app runs, and gives it back when it quits", async () => {
+    const user = await openOverview();
+    await answerLocked([]);
+    await pick(user, "Docker Data");
+    await pick(user, "Xcode Simulators");
+    expect(moveButtonName()).toBe("Move 2 items to Trash (24.7 GB)");
+
+    await answerNextLocked([DOCKER]);
+
+    expect(moveButtonName()).toBe("Move 1 item to Trash (3.07 GB)");
+    await user.click(moveButton());
+    expect(fakeGo.moveToTrash.last.ids).toEqual([`id:${SIMULATOR.path}`]);
+    await act(async () => fakeGo.moveToTrash.last.resolve(moved(movedItem(SIMULATOR.path, 3.07 * GB))));
+
+    await answerNextLocked([]);
+
+    expect(pickBox("Docker Data")).toBeChecked();
+    expect(moveButtonName()).toBe("Move 1 item to Trash (21.6 GB)");
+  });
+
+  it("frees what a locked pick held, and counts it once when the app quits", async () => {
+    const user = await openOverview();
+    await answerLocked([]);
+    await open(user, "Home");
+    await open(user, "Projects");
+    await pick(user, "burrow");
+    await open(user, "burrow");
+    expect(moveButtonName()).toBe("Move 1 item to Trash (12.1 GB)");
+
+    await answerNextLocked([{ path: `${BURROW}/dist`, app: "Docker" }]);
+
+    expect(screen.queryByRole("button", { name: /to Trash/ })).not.toBeInTheDocument();
+    expect(pickBox("node_modules")).toBeEnabled();
+    expect(pickBox("node_modules")).not.toBeChecked();
+    await pick(user, "node_modules");
+    expect(moveButtonName()).toBe("Move 1 item to Trash (6.4 GB)");
+
+    await answerNextLocked([]);
+
+    expect(pickBox("node_modules")).toBeChecked();
+    expect(pickBox("node_modules")).toBeDisabled();
+    expect(moveButtonName()).toBe("Move 1 item to Trash (12.1 GB)");
+    await user.click(moveButton());
+    expect(fakeGo.moveToTrash.last.ids).toEqual([`id:${BURROW}`]);
+  });
+
+  it("hides the footer when every pick is locked", async () => {
+    const user = await openOverview();
+    await answerLocked([]);
+    await pick(user, "Docker Data");
+
+    await answerNextLocked([DOCKER]);
+
+    expect(screen.queryByRole("button", { name: /to Trash/ })).not.toBeInTheDocument();
+  });
+
+  it("keeps the lock when asking fails, and keeps asking", async () => {
+    await openOverview();
+    await answerLocked([DOCKER]);
+    const asked = fakeGo.spaceLocked.calls.length;
+    await vi.waitFor(() => expect(fakeGo.spaceLocked.calls.length).toBeGreaterThan(asked), { timeout: 2_000 });
+
+    await act(async () => {
+      fakeGo.spaceLocked.last.reject(new Error("service: Space engine unavailable"));
+      await Promise.resolve();
+    });
+
+    expect(pickBox("Docker Data")).toBeDisabled();
+    await vi.waitFor(() => expect(fakeGo.spaceLocked.calls.length).toBeGreaterThan(asked + 1), { timeout: 2_000 });
+  });
+
+  it("asks only while Space is on screen, and at once when it comes back", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    expect(fakeGo.spaceLocked.calls).toHaveLength(0);
+
+    await user.keyboard("{Meta>}3{/Meta}");
+    expect(fakeGo.spaceLocked.calls).toHaveLength(1);
+    await act(async () => fakeGo.measure.last.resolve(overview));
+    await answerLocked([]);
+
+    await user.keyboard("{Meta>}2{/Meta}");
+    await act(() => new Promise((done) => setTimeout(done, 1_100)));
+    expect(fakeGo.spaceLocked.calls).toHaveLength(1);
+
+    await user.keyboard("{Meta>}3{/Meta}");
+    expect(fakeGo.spaceLocked.calls).toHaveLength(2);
   });
 });

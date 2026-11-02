@@ -109,6 +109,28 @@ func (g *Guard) Check(path string) (SkipReason, bool) {
 	return "", true
 }
 
+// CheckInUse returns false with the reason when removing path, which Check
+// let through, would take live data with it. live holds Home-relative paths;
+// path is in use when it is one of them, or lies inside or above one, as
+// given or with every symlink resolved. APFS ignores case, so this does too.
+func (g *Guard) CheckInUse(path string, live []string) (SkipReason, bool) {
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return checkFailure(err), false
+	}
+	if touches(g.home, path, live) || touches(g.realHome, resolved, live) {
+		return InUse, false
+	}
+	return "", true
+}
+
+// touches reports whether path covers one of live. Rel fails only for a path
+// Check refuses, and the answer that removes less stands for it.
+func touches(home, path string, live []string) bool {
+	rel, err := filepath.Rel(home, path)
+	return err != nil || covers(live, strings.ToLower(filepath.ToSlash(rel)))
+}
+
 func hasDotDot(path string) bool {
 	for segment := range strings.SplitSeq(path, "/") {
 		if segment == ".." {

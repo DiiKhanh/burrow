@@ -148,6 +148,16 @@ export interface LockedGroup {
 }
 
 /**
+ * LockedItem is a locked Space item: App is running and holds live data at
+ * Path, so neither Path, what lies in it, nor a folder that holds it can move
+ * until App quits.
+ */
+export interface LockedItem {
+  path: string;
+  app: string;
+}
+
+/**
  * MeasureResult is what one Measure found, as of MeasuredAt, when it
  * started: a change to the disk while it ran may be missing. Items,
  * Insights and LargestFiles are each sorted largest first. Insights lie
@@ -393,6 +403,13 @@ export const Clean = {
 
 /** Space is the bound service behind the Space tab. */
 export const Space = {
+  /**
+   * Locked lists the locked Space items right now, so a row unlocks once its
+   * app quits, without a new Measure.
+   */
+  locked(): Promise<LockedItem[]> {
+    return call("Space.Locked");
+  },
   /**
    * Measure measures target. Space sends nothing through updates; MyGo
    * cancels ctx when the page closes it, which stops the analyzer.

@@ -14,7 +14,7 @@ A Scan or Clean finishes with what it can read and reports the rest. When a side
 
 - **Go**: the package that first returns an error prefixes it with its own name and the failed step, as in `fmt.Errorf("clean: listing running apps: %w", err)`, and wraps with `%w`. That includes `ctx.Err()` and sentinel errors such as `io.ErrUnexpectedEOF`. A caller that adds nothing returns it as is.
 - **Logging**: an error that is handled by degrading is logged once, with `slog`, where the decision is made.
-- **Frontend**: a rejection is dropped only when Go has already logged it, and the handler's comment says so (see `src/clean/useLockedGroups.ts`). Otherwise it reaches the UI through `src/strings.ts` text.
+- **Frontend**: a rejection is dropped only when Go has already logged it, and the handler's comment says so (see `src/shell/usePolled.ts`). Otherwise it reaches the UI through `src/strings.ts` text.
 
 ## Tests
 

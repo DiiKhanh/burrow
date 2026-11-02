@@ -43,8 +43,9 @@ type TrashProgress struct {
 
 // MoveToTrash moves the picked Space items into the Trash, and never deletes
 // (ADR 0004). It takes ids a current result lists, never paths. Every item is
-// re-checked right before it moves; one that fails a check or cannot be moved
-// is skipped with its reason, never retried, and the run goes on.
+// re-checked right before it moves, the running apps included; one that fails
+// a check or cannot be moved is skipped with its reason, never retried, and
+// the run goes on.
 func (e *Engine) MoveToTrash(ctx context.Context, ids []string, onProgress func(TrashProgress) error) (TrashReport, error) {
 	guard, err := removal.NewPickedGuard(e.home, belowFirstLevel, outsideCleansGround)
 	if err != nil {
@@ -127,7 +128,11 @@ func (e *Engine) trash(ctx context.Context, guard *removal.Guard, unknown []stri
 
 func (e *Engine) moveItem(guard *removal.Guard, item SpaceItem) TrashedItem {
 	trashed := TrashedItem{ID: item.ID, Name: item.Name, Path: item.Path, Bytes: item.Bytes}
-	if reason, ok := guard.Check(item.Path); !ok {
+	reason, ok := guard.Check(item.Path)
+	if ok {
+		reason, ok = guard.CheckInUse(item.Path, e.liveData())
+	}
+	if !ok {
 		trashed.SkipReason = ptr(reason)
 		return trashed
 	}
