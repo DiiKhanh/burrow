@@ -9,6 +9,7 @@ import { installAutopilot } from "./autopilot";
 type ScanUpdates = Parameters<typeof Real.Clean.scan>[0];
 type CleanUpdates = Parameters<typeof Real.Clean.clean>[1];
 type MeasureUpdates = Parameters<typeof Real.Space.measure>[1];
+type TrashUpdates = Parameters<typeof Real.Space.moveToTrash>[1];
 
 /** A call to the fake that the test settles, as Go would. */
 type Pending<T> = { resolve(value: T): void; reject(error?: Error): void };
@@ -23,6 +24,7 @@ export type StreamCall<P, T> = Pending<T> & { emit(progress: P): void; readonly 
 export type ScanCall = StreamCall<Real.ScanProgress, Real.ScanResult>;
 export type CleanCall = StreamCall<Real.CleanProgress, Real.CleanReport> & { readonly ids: readonly string[] };
 export type MeasureCall = StreamCall<Real.NoProgress, Real.MeasureResult> & { readonly target: Real.MeasureTarget };
+export type TrashCall = StreamCall<Real.TrashProgress, Real.TrashReport> & { readonly ids: readonly string[] };
 export type PrivacyCall = Pending<Real.SettingsPane>;
 export type RevealCall = Pending<void> & { readonly id: string };
 export type LockedCall = Pending<Real.LockedGroup[]>;
@@ -94,6 +96,7 @@ function streamCall<P, T>(updates: { onmessage: ((value: P) => void) | null; rea
 const scans = callLog<ScanCall>("Clean.scan");
 const cleans = callLog<CleanCall>("Clean.clean");
 const measures = callLog<MeasureCall>("Space.measure");
+const trashes = callLog<TrashCall>("Space.moveToTrash");
 const reveals = callLog<RevealCall>("Space.reveal");
 const privacy = callLog<PrivacyCall>("Privacy.openFullDiskAccess");
 const locks = callLog<LockedCall>("Clean.locked");
@@ -120,6 +123,11 @@ export const Space = {
   measure: (target: Real.MeasureTarget, updates: MeasureUpdates): Promise<Real.MeasureResult> => {
     const { call, promise } = streamCall<Real.NoProgress, Real.MeasureResult>(updates);
     measures.record(Object.assign(call, { target: { ...target } }));
+    return promise;
+  },
+  moveToTrash: (ids: string[], updates: TrashUpdates): Promise<Real.TrashReport> => {
+    const { call, promise } = streamCall<Real.TrashProgress, Real.TrashReport>(updates);
+    trashes.record(Object.assign(call, { ids: [...ids] }));
     return promise;
   },
   reveal: (id: string): Promise<void> => {
@@ -180,6 +188,7 @@ export const fakeGo = {
   clean: cleans.log,
   locked: locks.log,
   measure: measures.log,
+  moveToTrash: trashes.log,
   reveal: reveals.log,
   privacy: privacy.log,
   status: { emit: (snapshot: Real.Snapshot) => events.status.emit(snapshot) },
@@ -193,6 +202,7 @@ export function resetFake() {
   cleans.reset();
   locks.reset();
   measures.reset();
+  trashes.reset();
   reveals.reset();
   privacy.reset();
 }

@@ -16,6 +16,9 @@ export interface Battery {
 /** BatteryState is the charging state Mole reports, normalized for the UI. */
 export type BatteryState = "charging" | "charged" | "discharging";
 
+/** BlockReason says why a Space item cannot be picked. */
+export type BlockReason = "outside-home" | "top-level" | "clean-handles";
+
 /**
  * BluetoothDevice is one connected device. BatteryPercent is nil when Mole
  * could not read that device's battery.
@@ -299,6 +302,8 @@ export interface Snapshot {
  * the same for its path, so a later Measure keeps it. Opens is the target
  * that measures a folder's contents, nil for anything else, including a
  * folder whose ReadState is unavailable: measuring it could only fail.
+ * Blocked is why it cannot be picked, nil when it can: a hint for the UI,
+ * which MoveToTrash checks again.
  */
 export interface SpaceItem {
   id: string;
@@ -308,6 +313,7 @@ export interface SpaceItem {
   isDir: boolean;
   readState: ReadState;
   tags: Tag[];
+  blocked: BlockReason | null;
   opens: MeasureTarget | null;
 }
 
@@ -323,6 +329,36 @@ export interface Thermal {
   systemWatts: number | null;
   hasFan: boolean | null;
   fanRPM: number | null;
+}
+
+/** TrashProgress is an observable point in a running Move to Trash. */
+export interface TrashProgress {
+  total: number;
+  processed: number;
+  movedBytes: number;
+}
+
+/**
+ * TrashReport is the outcome of one Move to Trash, item by item. MovedBytes
+ * counts the measured sizes of the items moved: their space is freed only
+ * once the Trash is emptied.
+ */
+export interface TrashReport {
+  items: TrashedItem[];
+  movedBytes: number;
+}
+
+/**
+ * TrashedItem is what MoveToTrash did with one picked Space item: moved, or
+ * skipped with SkipReason. Name and Path are empty only for an id no current
+ * result lists.
+ */
+export interface TrashedItem {
+  id: string;
+  name: string;
+  path: string;
+  bytes: number;
+  skipReason: SkipReason | null;
 }
 
 // ---- Services ----
@@ -363,6 +399,13 @@ export const Space = {
    */
   measure(target: MeasureTarget, updates: Channel<NoProgress>): Promise<MeasureResult> {
     return call("Space.Measure", target, updates);
+  },
+  /**
+   * MoveToTrash moves the picked Space items, by id, into the Trash, streaming
+   * progress through updates. MyGo cancels ctx when the page closes updates.
+   */
+  moveToTrash(ids: string[], updates: Channel<TrashProgress>): Promise<TrashReport> {
+    return call("Space.MoveToTrash", ids, updates);
   },
   /**
    * Reveal shows the Space item id in Finder. Go logs why when it cannot,

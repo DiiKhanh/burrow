@@ -2,6 +2,7 @@ import { Channel } from "mygo-runtime";
 import { useRef, useState } from "react";
 import { type MeasureResult, type MeasureTarget, type NoProgress, Space, type SpaceItem } from "../mygo";
 import { strings } from "../strings";
+import { type Gone, isGone, keyOf, withoutGone } from "./results";
 
 type MeasureSession = { result: Promise<MeasureResult>; cancel: () => void };
 
@@ -25,17 +26,20 @@ function upTo(trail: Trail, index: number): Trail {
   return [trail[0], ...trail.slice(1, index + 1)];
 }
 
-const ROOT: Crumb = { name: strings.space.trail.root, target: { kind: "overview" } };
-
-/** Results are kept per target; the UI only sends back targets Go gave it, so equal targets serialize alike. */
-function keyOf(target: MeasureTarget): string {
-  return JSON.stringify(target);
+/** The trail as far as its folders are left. */
+function withoutGoneFolders(trail: Trail, gone: readonly Gone[]): Trail {
+  const first = trail.findIndex((crumb) => isGone(crumb.target, gone));
+  return first < 0 ? trail : upTo(trail, first - 1);
 }
+
+const ROOT: Crumb = { name: strings.space.trail.root, target: { kind: "overview" } };
 
 export type Measures = {
   trail: Trail;
   /** The last Measure of the folder on screen, kept for the session. */
   result: MeasureResult | null;
+  /** The last Measure of every target this session, by keyOf. */
+  results: ReadonlyMap<string, MeasureResult>;
   measuring: boolean;
   error: string | null;
   open: (item: SpaceItem) => void;
@@ -43,6 +47,8 @@ export type Measures = {
   goTo: (index: number) => void;
   measureAgain: () => void;
   cancel: () => void;
+  /** Takes items no longer on disk out of every result and the trail, without a new Measure. */
+  forget: (gone: readonly Gone[]) => void;
 };
 
 /**
@@ -99,6 +105,7 @@ export function useMeasures(): Measures {
   return {
     trail,
     result: results.get(keyOf(current.target)) ?? null,
+    results,
     measuring,
     error,
     open: (item) => {
@@ -111,6 +118,10 @@ export function useMeasures(): Measures {
       stop();
       const measured = trail.reduce((deepest, crumb, index) => (results.has(keyOf(crumb.target)) ? index : deepest), 0);
       setTrail(upTo(trail, measured));
+    },
+    forget: (gone) => {
+      setResults((known) => withoutGone(known, gone));
+      setTrail((known) => withoutGoneFolders(known, gone));
     },
   };
 }

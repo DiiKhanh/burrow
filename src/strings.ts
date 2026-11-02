@@ -1,6 +1,6 @@
 // Every string the user sees. Components never hardcode text: they read it
 // here, and strings with numbers or plurals are functions.
-import type { BatteryState, HealthLevel, HealthReason, MemoryPressure, SkipReason, Tag } from "./mygo";
+import type { BatteryState, BlockReason, HealthLevel, HealthReason, MemoryPressure, SkipReason, Tag } from "./mygo";
 
 const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
 
@@ -275,6 +275,16 @@ export const strings = {
     } satisfies Record<Tag, string>,
     /** The tooltip of the "Clean handles this" tag, which opens the Clean tab. */
     openClean: "Remove it with Clean",
+    /** Why a row has no checkbox; its "Clean handles this" tag says the third reason. */
+    blocked: {
+      "outside-home": { label: "Reveal only", why: "Outside your home folder: Burrow only shows it in Finder" },
+      "top-level": {
+        label: "Top level",
+        why: "Burrow leaves the top of your home folder alone: pick inside a folder instead",
+      },
+    } satisfies Record<Exclude<BlockReason, "clean-handles">, { label: string; why: string }>,
+    /** A row's checkbox: "Pick node_modules". */
+    pick: (name: string) => `Pick ${name}`,
     reveal: "Reveal",
     /** The Reveal button's name: "Reveal Movies in Finder". */
     revealIn: (name: string) => `Reveal ${name} in Finder`,
@@ -297,6 +307,30 @@ export const strings = {
       locations: "Locations",
     },
     count: (count: number) => plural(count, "item", "items"),
+    trash: {
+      /** Beside the button: "21.6 GB picked". */
+      picked: (size: string) => `${size} picked`,
+      move: (count: number, size: string) => `Move ${plural(count, "item", "items")} to Trash (${size})`,
+      error: "Move to Trash could not finish. Measure again to see what is left.",
+      progress: {
+        label: "Move to Trash progress",
+        /** "Moving to Trash… 3 / 5": items done of all picked. */
+        count: (processed: number, total: number) => `Moving to Trash… ${processed} / ${total}`,
+        movedSoFar: (size: string) => `${size} moved so far`,
+      },
+      result: {
+        label: "Move to Trash result",
+        /** "3.3 GB moved to Trash · 1 moved", then each skip: "· 2 skipped: dist (in use), src (protected)". */
+        summary: (size: string, moved: number, skipped: readonly { name: string; reason: SkipReason }[]) => {
+          const parts = [`${size} moved to Trash`, `${moved} moved`];
+          if (skipped.length === 0) return parts.join(SEPARATOR);
+          const reasons = skipped.map(({ name, reason }) => `${name} (${skipReasons[reason]})`).join(", ");
+          return [...parts, `${skipped.length} skipped: ${reasons}`].join(SEPARATOR);
+        },
+        emptyTrash: "Disk space comes back when the Trash is emptied.",
+        done: "Done",
+      },
+    },
   },
   /** Shown in place of a value that could not be read. */
   unavailable: "-",

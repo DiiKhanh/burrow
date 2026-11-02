@@ -45,11 +45,11 @@ Removing a junk item for good, freeing its space immediately.
 _Avoid_: Purge, wipe, erase
 
 **Move to Trash**:
-Removing a junk item into the macOS Trash, where it can still be put back; its space is freed only when the Trash is emptied.
+Removing a junk item or Space item into the macOS Trash, where it can still be put back; its space is freed only when the Trash is emptied.
 _Avoid_: Soft delete, recycle
 
 **Skipped item**:
-A selected junk item that Clean did not remove, always with a reason (in use, permission denied, protected, already gone).
+A selected junk item that Clean did not remove, or a picked Space item Space did not move, always with a reason (in use, permission denied, protected, already gone).
 _Avoid_: Failed item, error
 
 **Space**:

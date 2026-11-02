@@ -8,12 +8,12 @@ import (
 	"time"
 )
 
-// historyPath is where every removal run is logged, inside Burrow's
+// HistoryPath is where every removal run is logged, inside Burrow's
 // Application Support folder under Home.
-const historyPath = "Library/Application Support/Burrow/history.jsonl"
+const HistoryPath = "Library/Application Support/Burrow/history.jsonl"
 
-// historyRun is one line of the history file: one removal run.
-type historyRun struct {
+// HistoryRun is one line of the history file: one removal run.
+type HistoryRun struct {
 	Time  time.Time     `json:"time"`
 	Items []HistoryItem `json:"items"`
 }
@@ -44,11 +44,11 @@ func AppendHistory(home string, at time.Time, items []HistoryItem) error {
 	if items == nil {
 		items = []HistoryItem{}
 	}
-	line, err := json.Marshal(historyRun{Time: at, Items: items})
+	line, err := json.Marshal(HistoryRun{Time: at, Items: items})
 	if err != nil {
 		return fmt.Errorf("removal: encoding history: %w", err)
 	}
-	path := filepath.Join(home, filepath.FromSlash(historyPath))
+	path := filepath.Join(home, filepath.FromSlash(HistoryPath))
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("removal: creating the history folder: %w", err)
 	}

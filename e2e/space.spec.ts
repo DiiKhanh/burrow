@@ -31,10 +31,10 @@ test("shows the overview: the locations' total, Insights above Locations", async
   await expect(insights.getByRole("listitem")).toHaveCount(5);
   await expect(insights.getByRole("listitem").first()).toHaveText("Docker DataInsightReveal21.6 GB›");
   await expect(locations.getByRole("listitem")).toHaveText([
-    "User LibraryReveal73.1 GB›",
-    "HomeReveal46.3 GB›",
-    "ApplicationsReveal19.7 GB›",
-    "System LibraryReveal6.83 GB›",
+    "User LibraryTop levelReveal73.1 GB›",
+    "HomeTop levelReveal46.3 GB›",
+    "ApplicationsReveal onlyReveal19.7 GB›",
+    "System LibraryReveal onlyReveal6.83 GB›",
   ]);
   const insightsTop = (await insights.boundingBox())?.y ?? 0;
   const locationsTop = (await locations.boundingBox())?.y ?? 0;
@@ -211,7 +211,7 @@ test("shows what the overview could not read and opens Full Disk Access", async 
   await page.keyboard.press("Meta+3");
 
   await expect(page.getByRole("region", { name: "Locations" }).getByRole("listitem").first()).toHaveText(
-    "User LibraryRevealPartly unreadable73.1 GB›",
+    "User LibraryTop levelRevealPartly unreadable73.1 GB›",
   );
   await expect(page.getByRole("region", { name: "Insights" }).getByRole("listitem").last()).toHaveText(
     "iOS BackupsInsightRevealProtected access unavailable",
@@ -296,4 +296,152 @@ test("does not mark what is measured after a Clean", async ({ page }) => {
 
   await expect(page.getByText("146 GB measured on this Mac")).toBeVisible();
   await expect(page.getByRole("region", { name: "Measured before last clean" })).toHaveCount(0);
+});
+
+/** Opens Space on the project, the deepest fake folder. */
+async function openProject(page: Page, url = "/") {
+  await page.goto(url);
+  await page.keyboard.press("Meta+3");
+  await page.getByRole("button", { name: "Open Home", exact: true }).click();
+  await page.getByRole("button", { name: "Open Projects" }).click();
+  await page.getByRole("button", { name: "Open burrow" }).click();
+  await expect(page.getByText("12.1 GB in this folder")).toBeVisible();
+}
+
+const trail = (page: Page) => page.getByRole("navigation", { name: "Folders" });
+const moveButton = (page: Page) => page.getByRole("button", { name: /^Move \d+ items? to Trash/ });
+
+test("offers no checkbox for what cannot be picked, and says why", async ({ page }) => {
+  await page.goto("/");
+  await page.keyboard.press("Meta+3");
+
+  const locations = page.getByRole("region", { name: "Locations" });
+  await expect(locations.getByRole("checkbox")).toHaveCount(0);
+  const applications = locations.getByRole("listitem").filter({ hasText: "Applications" });
+  await expect(applications.getByText("Reveal only", { exact: true })).toBeVisible();
+  await expect(applications.getByRole("button", { name: "Reveal Applications in Finder" })).toBeAttached();
+  await expect(locations.getByRole("listitem").filter({ hasText: "Home" }).getByText("Top level")).toBeVisible();
+
+  const insights = page.getByRole("region", { name: "Insights" });
+  await expect(insights.getByRole("listitem").filter({ hasText: "Homebrew Cache" }).getByRole("checkbox")).toHaveCount(
+    0,
+  );
+  await expect(page.getByRole("checkbox", { name: "Pick Docker Data" })).toBeVisible();
+});
+
+test("picks across folders, a folder covering what lies in it", async ({ page }) => {
+  await openProject(page);
+
+  await page.getByRole("checkbox", { name: "Pick node_modules" }).click();
+  await expect(page.getByText("6.4 GB picked")).toBeVisible();
+  await trail(page).getByRole("button", { name: "This Mac" }).click();
+  await page.getByRole("checkbox", { name: "Pick Docker Data" }).click();
+  await expect(moveButton(page)).toHaveText("Move 2 items to Trash (28 GB)");
+
+  await page.getByRole("button", { name: "Open Home", exact: true }).click();
+  await page.getByRole("button", { name: "Open Projects" }).click();
+  const burrow = page.getByRole("checkbox", { name: "Pick burrow", exact: true });
+  await expect(burrow).toHaveAttribute("aria-checked", "mixed");
+  await burrow.click();
+  await expect(burrow).toBeChecked();
+  await expect(moveButton(page)).toHaveText("Move 2 items to Trash (33.7 GB)");
+
+  await page.getByRole("button", { name: "Open burrow" }).click();
+  const covered = page.getByRole("checkbox", { name: "Pick node_modules" });
+  await expect(covered).toBeChecked();
+  await expect(covered).toBeDisabled();
+});
+
+test("ticks a row without opening it, and a row still opens around its checkbox", async ({ page }) => {
+  await openProject(page);
+  const contents = page.getByRole("region", { name: "Contents" });
+  const row = contents.getByRole("listitem").filter({ hasText: "dist" });
+
+  await row.getByRole("checkbox").click();
+  await expect(row.getByRole("checkbox")).toBeChecked();
+  await expect(trail(page).getByRole("button")).toHaveText(["This Mac", "Home", "Projects", "burrow"]);
+
+  await row.getByText("dist").click();
+  await expect(trail(page).getByRole("button")).toHaveText(["This Mac", "Home", "Projects", "burrow", "dist"]);
+});
+
+test("moves the picks to the Trash and drops their size from every folder above", async ({ page }) => {
+  await openProject(page);
+  await page.getByRole("checkbox", { name: "Pick node_modules" }).click();
+
+  await moveButton(page).click();
+
+  const result = page.getByRole("region", { name: "Move to Trash result" });
+  await expect(result).toContainText("6.4 GB moved to Trash · 1 moved");
+  await expect(result).toContainText("Disk space comes back when the Trash is emptied.");
+  await expect(page.getByText("5.7 GB in this folder")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open node_modules" })).toHaveCount(0);
+
+  await trail(page).getByRole("button", { name: "Projects" }).click();
+  await expect(page.getByText("15 GB in this folder")).toBeVisible();
+  await expect(page.getByRole("region", { name: "Contents" }).getByRole("listitem").nth(1)).toContainText("burrow");
+  await expect(page.getByRole("region", { name: "Contents" }).getByRole("listitem").nth(1)).toContainText("5.7 GB");
+  await trail(page).getByRole("button", { name: "This Mac" }).click();
+  await expect(page.getByRole("region", { name: "Locations" }).getByRole("listitem").nth(1)).toContainText("39.9 GB");
+
+  expect(await page.evaluate(() => window.burrowFake?.moveToTrash.last.ids)).toEqual([
+    "id:/Users/test/Projects/burrow/node_modules",
+  ]);
+  expect(await page.evaluate(() => window.burrowFake?.measure.calls.length)).toBe(4);
+  await expect(page.getByRole("region", { name: "Measured before last clean" })).toHaveCount(0);
+
+  await result.getByRole("button", { name: "Done" }).click();
+  await expect(result).toHaveCount(0);
+});
+
+test("says which item it skipped and why, and leaves it in the list", async ({ page }) => {
+  await openProject(page, "/?trash=skipped");
+  await page.getByRole("checkbox", { name: "Pick node_modules" }).click();
+  await page.getByRole("checkbox", { name: "Pick dist" }).click();
+
+  await moveButton(page).click();
+
+  await expect(page.getByRole("region", { name: "Move to Trash result" })).toContainText(
+    "3.3 GB moved to Trash · 1 moved · 1 skipped: node_modules (in use)",
+  );
+  const contents = page.getByRole("region", { name: "Contents" }).getByRole("listitem");
+  await expect(contents.first()).toContainText("node_modules");
+  await expect(contents.first()).toContainText("6.4 GB");
+  await expect(page.getByRole("button", { name: "Open dist" })).toHaveCount(0);
+  await expect(page.getByRole("checkbox", { name: "Pick node_modules" })).not.toBeChecked();
+});
+
+test("shows how far a Move to Trash got", async ({ page }) => {
+  await openProject(page, "/?trash=running");
+  await page.getByRole("checkbox", { name: "Pick node_modules" }).click();
+  await page.getByRole("checkbox", { name: "Pick dist" }).click();
+
+  await moveButton(page).click();
+
+  const progress = page.getByRole("status", { name: "Move to Trash progress" });
+  await expect(progress).toContainText("Moving to Trash… 1 / 2");
+  await expect(progress).toContainText("6.4 GB moved so far");
+  await expect(moveButton(page)).toHaveCount(0);
+});
+
+test("says a failed Move to Trash could not finish and keeps the picks", async ({ page }) => {
+  await openProject(page, "/?trash=failed");
+  await page.getByRole("checkbox", { name: "Pick dist" }).click();
+
+  await moveButton(page).click();
+
+  await expect(page.getByText("Move to Trash could not finish. Measure again to see what is left.")).toBeVisible();
+  await expect(moveButton(page)).toHaveText("Move 1 item to Trash (3.3 GB)");
+});
+
+test("keeps the footer on screen while the list scrolls", async ({ page }) => {
+  await page.setViewportSize({ width: 760, height: 560 });
+  await openProject(page);
+  await page.getByRole("checkbox", { name: "Pick node_modules" }).click();
+  const footerTop = (await moveButton(page).boundingBox())?.y ?? 0;
+
+  await page.getByRole("region", { name: /^Largest files/ }).scrollIntoViewIfNeeded();
+
+  await expect(moveButton(page)).toBeInViewport();
+  expect((await moveButton(page).boundingBox())?.y).toBe(footerTop);
 });
