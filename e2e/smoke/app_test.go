@@ -21,6 +21,27 @@ import (
 // quitGrace is how long the app may take to quit once its automation pipe closes.
 const quitGrace = 10 * time.Second
 
+// appBinary is the binary inside one build of the app, and the bun script
+// that makes that build.
+type appBinary struct {
+	path        string
+	buildScript string
+}
+
+// locate returns the binary's absolute path, and fails the test when the
+// build is missing.
+func (b appBinary) locate(t *testing.T) string {
+	t.Helper()
+	path, err := filepath.Abs(b.path)
+	if err != nil {
+		t.Fatalf("resolving %s: %v", b.path, err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("the app is not built, run `bun run %s` first: %v", b.buildScript, err)
+	}
+	return path
+}
+
 // runningApp is the built app, started with HOME set to a fixture tree.
 type runningApp struct {
 	cmd    *exec.Cmd
@@ -29,17 +50,11 @@ type runningApp struct {
 	err    error
 }
 
-// startApp launches the built app with HOME=home. extraFiles become the
-// app's file descriptors 3, 4 and so on.
-func startApp(t *testing.T, home string, env []string, extraFiles ...*os.File) *runningApp {
+// startApp launches the app binary of a build with HOME=home. extraFiles
+// become the app's file descriptors 3, 4 and so on.
+func startApp(t *testing.T, binary appBinary, home string, env []string, extraFiles ...*os.File) *runningApp {
 	t.Helper()
-	path, err := filepath.Abs(executable)
-	if err != nil {
-		t.Fatalf("resolving %s: %v", executable, err)
-	}
-	if _, err := os.Stat(path); err != nil {
-		t.Fatalf("the app is not built, run `bun run build` first: %v", err)
-	}
+	path := binary.locate(t)
 	app := &runningApp{output: &lockedBuffer{}, exited: make(chan struct{})}
 	app.cmd = exec.Command(path)
 	app.cmd.Env = append(append(os.Environ(), "HOME="+home), env...)
@@ -71,10 +86,10 @@ func (a *runningApp) kill(t *testing.T) {
 	<-a.exited
 }
 
-// startDrivenApp launches the built app with HOME=home and returns a page
-// that runs scripts in it through the automation pipes. Closing them at the
-// end of the test makes the app quit.
-func startDrivenApp(t *testing.T, home string) *page {
+// startDrivenApp launches the app binary of a build with HOME=home and
+// returns a page that runs scripts in it through the automation pipes.
+// Closing them at the end of the test makes the app quit.
+func startDrivenApp(t *testing.T, binary appBinary, home string) *page {
 	t.Helper()
 	requestsR, requestsW, err := os.Pipe()
 	if err != nil {
@@ -84,7 +99,7 @@ func startDrivenApp(t *testing.T, home string) *page {
 	if err != nil {
 		t.Fatal(err)
 	}
-	app := startApp(t, home, []string{automation.Env + "=1"}, requestsR, responsesW)
+	app := startApp(t, binary, home, []string{automation.Env + "=1"}, requestsR, responsesW)
 	// Only the app keeps its ends, so either side sees the other one go.
 	for _, f := range []*os.File{requestsR, responsesW} {
 		if err := f.Close(); err != nil {

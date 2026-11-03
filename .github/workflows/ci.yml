@@ -66,4 +66,7 @@ jobs:
           bun-version-file: package.json
       - run: bun install --frozen-lockfile
       - run: bun run build
+      # Space's smoke test moves to Trash with the test build, never the
+      # shipped app: a fake HOME does not redirect the real Trash.
+      - run: bun run build:smoke
       - run: bun run test:smoke

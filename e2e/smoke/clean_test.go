@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -30,8 +31,8 @@ var groupNames = map[clean.JunkGroupID]string{
 }
 
 // selectedGroup is the one junk group the test cleans. It Deletes, as the
-// other fixture group does: Move to Trash would use the real Trash, which a
-// fake HOME does not redirect.
+// other fixture group does: the shipped app's Move to Trash would use the
+// real Trash, which a fake HOME does not redirect.
 const selectedGroup = clean.LogsSavedState
 
 // Scripts run in the page as the body of an async function. %s takes a
@@ -81,7 +82,7 @@ type reviewGroup struct {
 func TestCleanRemovesOnlyTheSelectedDeleteGroupFromTheFixture(t *testing.T) {
 	manifest := generatedHome(t)
 	selected, kept := splitItems(t, manifest)
-	app := startDrivenApp(t, manifest.Home)
+	app := startDrivenApp(t, shipped, manifest.Home)
 
 	var ok bool
 	app.waitFor("the Start scan button", loadTimeout, &ok, clickButtonScript, "Start scan")
@@ -111,14 +112,7 @@ func TestCleanRemovesOnlyTheSelectedDeleteGroupFromTheFixture(t *testing.T) {
 			t.Errorf("unselected item %s has %d bytes, want it untouched with %d", item.Path, bytes, item.Bytes)
 		}
 	}
-	for path := range before {
-		if within(path, selected.Path) {
-			continue
-		}
-		if _, err := os.Lstat(path); err != nil {
-			t.Errorf("Clean removed %s, which was not selected: %v", path, err)
-		}
-	}
+	assertOnlyRemoved(t, before, selected.Path)
 	assertHistory(t, manifest.Home, selected)
 }
 
@@ -190,6 +184,20 @@ func snapshot(t *testing.T, root string) map[string]bool {
 		t.Fatalf("listing %s: %v", root, err)
 	}
 	return paths
+}
+
+// assertOnlyRemoved checks that every path of the snapshot before still
+// exists, except removed and what lay in them.
+func assertOnlyRemoved(t *testing.T, before map[string]bool, removed ...string) {
+	t.Helper()
+	for path := range before {
+		if slices.ContainsFunc(removed, func(root string) bool { return within(path, root) }) {
+			continue
+		}
+		if _, err := os.Lstat(path); err != nil {
+			t.Errorf("%s was removed, though not selected: %v", path, err)
+		}
+	}
 }
 
 // assertHistory checks that Clean logged exactly one Delete: the selected item.

@@ -21,10 +21,11 @@ You need [Go](https://go.dev/dl/) (the `toolchain` line of `go.mod` fetches the 
 bun install                 # also fetches the pinned Mole into resources/
 bun run dev                 # the app, with live reload
 bun run build               # Burrow.app and a DMG in build/darwin-arm64/
+bun run build:smoke         # the test build of Burrow.app in build/smoke/, which moves to HOME's .Trash
 bun run check               # lint, typecheck and unit tests, Go and TypeScript
 bun run test:integration    # Go integration tests
 bun run test:e2e            # Playwright, against the UI with a fake Go client
-bun run test:smoke          # launches the built app
+bun run test:smoke          # launches the built app and its test build
 bun run test:realtrash      # moves a temp file into your real Trash; never in CI
 ```
 

@@ -1,6 +1,8 @@
 //go:build smoke
 
-// Package smoke runs the built Burrow.app. Build it first: `bun run build`.
+// Package smoke runs the built Burrow.app. Build it first: `bun run build`,
+// and `bun run build:smoke` for the test build that Space's test moves to
+// Trash with.
 package smoke
 
 import (
@@ -22,11 +24,14 @@ const (
 	resources  = app + "/Contents/Resources"
 )
 
+// shipped is the app as Burrow ships it.
+var shipped = appBinary{path: executable, buildScript: "build"}
+
 // settle is how long the app must keep running to count as started.
 const settle = 5 * time.Second
 
 func TestAppLaunches(t *testing.T) {
-	app := startApp(t, generatedHome(t).Home, nil)
+	app := startApp(t, shipped, generatedHome(t).Home, nil)
 
 	select {
 	case <-app.exited:

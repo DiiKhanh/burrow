@@ -7,6 +7,7 @@
     "postinstall": "bun run fetch:mole",
     "dev": "bun run fetch:mole && mygo dev",
     "build": "bun run fetch:mole && mygo build",
+    "build:smoke": "GOFLAGS=-tags=smoke bun run build -o build/smoke -skip-dmg",
     "generate": "mygo generate",
     "fetch:mole": "go run ./tools/fetchmole",
     "check": "bun run check:go && bun run check:web && bun run check:repo",

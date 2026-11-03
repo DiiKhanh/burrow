@@ -39,10 +39,11 @@ func main() {
 		if err != nil {
 			log.Fatalf("finding the user's home: %v", err)
 		}
+		remover := removal.OSRemover{Trash: trashFor(home)}
 		configureClean(clean.NewEngine(clean.Options{
 			Scanner:   mole.NewScanner(bundle, home, slog.Default()),
 			Home:      home,
-			Remover:   removal.OSRemover{Trash: mygo.Shell.TrashItem},
+			Remover:   remover,
 			Processes: removal.OSProcesses{},
 			Logger:    slog.Default(),
 		}))
@@ -50,7 +51,7 @@ func main() {
 			Measurer:  mole.NewMeasurer(bundle, home, slog.Default()),
 			Home:      home,
 			Reveal:    mygo.Shell.ShowItemInFolder,
-			Remover:   removal.OSRemover{Trash: mygo.Shell.TrashItem},
+			Remover:   remover,
 			Processes: removal.OSProcesses{},
 			Logger:    slog.Default(),
 		}))

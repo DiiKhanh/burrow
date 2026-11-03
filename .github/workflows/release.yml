@@ -67,6 +67,8 @@ jobs:
         run: |
           bun run build -sign "$SIGNING_IDENTITY"
           codesign --verify --deep --strict build/darwin-arm64/Burrow.app
+      # The test build goes to build/smoke, apart from the assets below.
+      - run: bun run build:smoke
       - run: bun run test:smoke
       - name: Collect the assets
         run: |
