@@ -3,7 +3,6 @@
 package smoke
 
 import (
-	"encoding/json"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -12,6 +11,8 @@ import (
 	"time"
 
 	"github.com/DiiKhanh/burrow/internal/clean"
+	"github.com/DiiKhanh/burrow/internal/removal"
+	"github.com/DiiKhanh/burrow/internal/removal/removaltest"
 	"github.com/DiiKhanh/burrow/internal/testhome"
 )
 
@@ -194,28 +195,15 @@ func snapshot(t *testing.T, root string) map[string]bool {
 // assertHistory checks that Clean logged exactly one Delete: the selected item.
 func assertHistory(t *testing.T, home string, selected testhome.Item) {
 	t.Helper()
-	history, err := os.ReadFile(filepath.Join(home, "Library/Application Support/Burrow/history.jsonl"))
-	if err != nil {
-		t.Fatalf("reading the Clean history in the fixture: %v", err)
-	}
-	type historyItem struct {
-		Path    string `json:"path"`
-		Method  string `json:"method"`
-		Outcome string `json:"outcome"`
-	}
-	var items []historyItem
-	for _, line := range strings.Split(strings.TrimSpace(string(history)), "\n") {
-		var run struct {
-			Items []historyItem `json:"items"`
-		}
-		if err := json.Unmarshal([]byte(line), &run); err != nil {
-			t.Fatalf("history line %q: %v", line, err)
-		}
+	var items []removal.HistoryItem
+	for _, run := range removaltest.History(t, home) {
 		items = append(items, run.Items...)
 	}
-	want := historyItem{Path: selected.Path, Method: string(clean.Delete), Outcome: "removed"}
-	if len(items) != 1 || items[0] != want {
-		t.Fatalf("Clean history = %+v, want only %+v", items, want)
+	if len(items) != 1 {
+		t.Fatalf("Clean history = %+v, want only the Delete of %s", items, selected.Path)
+	}
+	if got := items[0]; got.Path != selected.Path || got.Method != removal.Delete || got.Outcome != removal.Removed {
+		t.Fatalf("Clean history item = %+v, want %s %s %s", got, selected.Path, removal.Delete, removal.Removed)
 	}
 }
 
