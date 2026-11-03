@@ -28,6 +28,7 @@ export type TrashCall = StreamCall<Real.TrashProgress, Real.TrashReport> & { rea
 export type PrivacyCall = Pending<Real.SettingsPane>;
 export type RevealCall = Pending<void> & { readonly id: string };
 export type LockedCall = Pending<Real.LockedGroup[]>;
+export type SpaceLockedCall = Pending<Real.LockedItem[]>;
 
 /** The calls one method of the fake received, oldest first. */
 export type CallLog<C> = {
@@ -100,6 +101,7 @@ const trashes = callLog<TrashCall>("Space.moveToTrash");
 const reveals = callLog<RevealCall>("Space.reveal");
 const privacy = callLog<PrivacyCall>("Privacy.openFullDiskAccess");
 const locks = callLog<LockedCall>("Clean.locked");
+const spaceLocks = callLog<SpaceLockedCall>("Space.locked");
 
 export const Clean = {
   clean: (ids: string[], updates: CleanUpdates): Promise<Real.CleanReport> => {
@@ -120,6 +122,11 @@ export const Clean = {
 } as const satisfies typeof Real.Clean;
 
 export const Space = {
+  locked: (): Promise<Real.LockedItem[]> => {
+    const { promise, ...call } = pending<Real.LockedItem[]>();
+    spaceLocks.record(call);
+    return promise;
+  },
   measure: (target: Real.MeasureTarget, updates: MeasureUpdates): Promise<Real.MeasureResult> => {
     const { call, promise } = streamCall<Real.NoProgress, Real.MeasureResult>(updates);
     measures.record(Object.assign(call, { target: { ...target } }));
@@ -187,6 +194,7 @@ export const fakeGo = {
   scan: scans.log,
   clean: cleans.log,
   locked: locks.log,
+  spaceLocked: spaceLocks.log,
   measure: measures.log,
   moveToTrash: trashes.log,
   reveal: reveals.log,
@@ -201,6 +209,7 @@ export function resetFake() {
   scans.reset();
   cleans.reset();
   locks.reset();
+  spaceLocks.reset();
   measures.reset();
   trashes.reset();
   reveals.reset();

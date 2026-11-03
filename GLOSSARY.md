@@ -64,6 +64,10 @@ _Avoid_: Scan, analyze, index
 One file or folder shown in Space with its size. Unlike a junk item, nothing proposed it for removal.
 _Avoid_: Entry, node, junk item
 
+**Locked Space item**:
+A Space item that cannot be picked right now because it is, lies in, or holds the live data of a running app. Burrow keeps the list of which apps own which data.
+_Avoid_: Disabled item, blocked item
+
 **Unreadable Space item**:
 A Space item a Measure could not read at all, shown as "Protected access unavailable" with no size, left out of the total, and not opened. Mole does not say why, so the cause may be something other than macOS privacy protection, such as the folder's own permissions.
 _Avoid_: Blocked item, empty item

@@ -1,15 +1,15 @@
 import { Channel } from "mygo-runtime";
 import { useState } from "react";
-import { Space, type SpaceItem, type TrashProgress, type TrashReport } from "../mygo";
+import { type LockedItem, Space, type SpaceItem, type TrashProgress, type TrashReport } from "../mygo";
 import { strings } from "../strings";
 import type { Picker } from "./ItemSection";
-import { listedItems, type Picks, pickedItems, pickState, setPicked } from "./picks";
+import { listedItems, lockingApps, movablePicks, type Picks, pickedItems, pickState, setPicked } from "./picks";
 import type { Measures } from "./useMeasures";
 
 export type Trash = {
   picker: Picker;
-  /** The picked Space items, each as last measured. */
-  picked: readonly SpaceItem[];
+  /** What the next run takes: the picked Space items no app locks, each as last measured. */
+  movable: readonly SpaceItem[];
   moving: boolean;
   progress: TrashProgress | null;
   report: TrashReport | null;
@@ -20,19 +20,24 @@ export type Trash = {
 
 /**
  * What is picked and the Move to Trash that takes it. A run takes the picks
- * of the moment it starts, so a pick made meanwhile waits for the next one.
+ * of the moment it starts, so a pick made meanwhile waits for the next one. A
+ * pick stays while its app locks it, so it comes back when the app quits, but
+ * no run takes it.
  */
-export function useTrash({ results, forget }: Pick<Measures, "results" | "forget">): Trash {
+export function useTrash(
+  { results, forget }: Pick<Measures, "results" | "forget">,
+  locks: readonly LockedItem[],
+): Trash {
   const [picks, setPicks] = useState<Picks>(new Set());
   const [moving, setMoving] = useState(false);
   const [progress, setProgress] = useState<TrashProgress | null>(null);
   const [report, setReport] = useState<TrashReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const listed = listedItems(results.values());
-  const picked = pickedItems(picks, listed);
+  const movable = movablePicks(pickedItems(picks, listed), locks);
 
   const move = () => {
-    const ids = picked.map((item) => item.id);
+    const ids = movable.map((item) => item.id);
     setMoving(true);
     setProgress(null);
     setReport(null);
@@ -54,13 +59,14 @@ export function useTrash({ results, forget }: Pick<Measures, "results" | "forget
 
   return {
     picker: {
-      stateOf: (item) => pickState(item, picked),
+      stateOf: (item) => pickState(item, movable),
+      lockedBy: (item) => lockingApps(item, locks),
       onPick: (item, on) => {
         setReport(null);
         setPicks((current) => setPicked(current, item, on, listed));
       },
     },
-    picked,
+    movable,
     moving,
     progress,
     report,

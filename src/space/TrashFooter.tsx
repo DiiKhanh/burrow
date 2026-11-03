@@ -6,21 +6,21 @@ import type { Trash } from "./useTrash";
 
 /** Under the list, whatever it scrolls to: the picks and the one action, or how the last run went. */
 export function TrashFooter({ trash }: { trash: Trash }) {
-  const { picked, moving, progress, report, error, move, dismiss } = trash;
-  if (!moving && !report && !error && picked.length === 0) return null;
-  const total = picked.reduce((sum, item) => sum + item.bytes, 0);
+  const { movable, moving, progress, report, error, move, dismiss } = trash;
+  if (!moving && !report && !error && movable.length === 0) return null;
+  const total = movable.reduce((sum, item) => sum + item.bytes, 0);
   return (
     <footer className="shrink-0 border-line border-t bg-surface-sunken">
       <div className="mx-auto flex w-full max-w-clean flex-col gap-2 px-6 py-3">
         {error && <p className="text-body text-danger">{error}</p>}
         {moving && <Moving progress={progress} />}
         {!moving && report && <Result report={report} onDone={dismiss} />}
-        {!moving && picked.length > 0 && (
+        {!moving && movable.length > 0 && (
           <div className="flex items-center justify-between gap-4">
             <p className="tabular min-w-0 font-mono text-note text-size">
               {strings.space.trash.picked(formatBytes(total))}
             </p>
-            <PillButton onClick={move}>{strings.space.trash.move(picked.length, formatBytes(total))}</PillButton>
+            <PillButton onClick={move}>{strings.space.trash.move(movable.length, formatBytes(total))}</PillButton>
           </div>
         )}
       </div>

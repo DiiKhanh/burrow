@@ -1,8 +1,16 @@
 // Settles the fake client's calls by the page's URL scenario, so Playwright
 // gets whole Scan and Clean runs without driving each step. Only
 // `vite --mode fake` installs it; Vitest drives `fakeGo` itself.
-import type { CleanProgress, CleanReport, LockedGroup, ScanProgress, ScanResult, TrashReport } from "../mygo";
-import { fakeItems, folderAt, overview, unreadableOverview } from "./measures";
+import type {
+  CleanProgress,
+  CleanReport,
+  LockedGroup,
+  LockedItem,
+  ScanProgress,
+  ScanResult,
+  TrashReport,
+} from "../mygo";
+import { fakeItems, folderAt, LIVE_DATA, overview, unreadableOverview } from "./measures";
 import type { CleanCall, FakeGo, MeasureCall, ScanCall, TrashCall } from "./mygo.fake";
 import { fullScan, longScan, unreadableScan } from "./scans";
 
@@ -41,6 +49,17 @@ type Browsers = { open: readonly string[] };
 /** The junk groups the open browsers lock, as the engine reports them. */
 function lockedBy(browsers: Browsers): LockedGroup[] {
   return browsers.open.length > 0 ? [{ id: "browsers", apps: [...browsers.open] }] : [];
+}
+
+/** The apps that hold live data open on the fake Mac, from `?apps=Docker,Simulator`; Playwright quits them. */
+type Apps = { open: readonly string[] };
+
+/** The Space items the open apps lock, as the engine reports them. */
+function lockedItems(apps: Apps): LockedItem[] {
+  return apps.open.flatMap((app) => {
+    const path = LIVE_DATA[app];
+    return path ? [{ path, app }] : [];
+  });
 }
 
 /** Waits ms, then reports whether the call is still running; a cancelled one ends as Go ends it. */
@@ -171,7 +190,8 @@ function scanFor(scenario: string | null): ScanResult {
  * how its Move to Trash does (see runTrash).
  * `?settings=` picks what System Settings opens: `fallback` only Privacy &
  * Security, `refused` nothing. `?browsers=` lists the open browsers, which
- * Playwright quits through `window.burrowBrowsers`.
+ * Playwright quits through `window.burrowBrowsers`, as `?apps=` does the apps
+ * that lock Space items, through `window.burrowApps`.
  */
 export function installAutopilot(go: FakeGo, search: string) {
   const scenarios = new URLSearchParams(search);
@@ -182,9 +202,16 @@ export function installAutopilot(go: FakeGo, search: string) {
       browsers.open = browsers.open.filter((open) => open !== app);
     },
   };
+  const apps: Apps = { open: scenarios.get("apps")?.split(",") ?? [] };
+  window.burrowApps = {
+    quit: (app) => {
+      apps.open = apps.open.filter((open) => open !== app);
+    },
+  };
   go.scan.onCall((call) => void runScan(call, scan, browsers));
   go.clean.onCall((call) => void runClean(call, scanFor(scan), scenarios.get("clean"), browsers));
   go.locked.onCall((call) => call.resolve(lockedBy(browsers)));
+  go.spaceLocked.onCall((call) => call.resolve(lockedItems(apps)));
   go.measure.onCall((call) => void runMeasure(call, scenarios.get("measure")));
   go.moveToTrash.onCall((call) => void runTrash(call, scenarios.get("trash")));
   go.reveal.onCall((call) => call.resolve());
@@ -199,5 +226,7 @@ declare global {
   interface Window {
     /** Quits a browser open on the fake Mac. */
     burrowBrowsers?: { quit(app: string): void };
+    /** Quits an app that locks Space items on the fake Mac. */
+    burrowApps?: { quit(app: string): void };
   }
 }

@@ -15,10 +15,11 @@ import (
 
 // trashHome is a fake Home on disk, with the engine and remover under test.
 type trashHome struct {
-	path     string
-	remover  *removaltest.FakeRemover
-	measurer *fakeMeasurer
-	engine   *Engine
+	path      string
+	remover   *removaltest.FakeRemover
+	measurer  *fakeMeasurer
+	processes *removaltest.FakeProcesses
+	engine    *Engine
 }
 
 func newTrashHome(t *testing.T) *trashHome {
@@ -29,11 +30,13 @@ func newTrashHome(t *testing.T) *trashHome {
 	}
 	remover := &removaltest.FakeRemover{TrashDir: filepath.Join(path, "fake-trash")}
 	measurer := &fakeMeasurer{}
+	processes := removaltest.NewFakeProcesses()
 	return &trashHome{
-		path:     path,
-		remover:  remover,
-		measurer: measurer,
-		engine:   NewEngine(Options{Measurer: measurer, Home: path, Remover: remover}),
+		path:      path,
+		remover:   remover,
+		measurer:  measurer,
+		processes: processes,
+		engine:    NewEngine(Options{Measurer: measurer, Home: path, Remover: remover, Processes: processes, Logger: quiet}),
 	}
 }
 

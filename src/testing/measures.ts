@@ -50,6 +50,12 @@ function unreadable(name: string, path: string, tags: Tag[] = []): SpaceItem {
   return { ...item(name, path, 0, tags), readState: "unavailable", opens: null };
 }
 
+const DOCKER_DATA = `${HOME}/Library/Containers/com.docker.docker/Data`;
+const SIMULATORS = `${HOME}/Library/Developer/CoreSimulator/Devices`;
+
+/** Where each app on the fake Mac holds its live data, as the engine's owners do. */
+export const LIVE_DATA: Readonly<Record<string, string>> = { Docker: DOCKER_DATA, Simulator: SIMULATORS };
+
 /** The same in the overview's row and inside it, as is OLD_DOWNLOADS_BYTES. */
 const HOME_BYTES = 46_300_012_000;
 const OLD_DOWNLOADS_BYTES = 3.02 * GB;
@@ -67,8 +73,8 @@ export const overview: MeasureResult = {
   measuredAt: "2026-10-30T09:00:00Z",
   items: locations,
   insights: [
-    item("Docker Data", `${HOME}/Library/Containers/com.docker.docker/Data`, 21.6 * GB, ["insight"]),
-    item("Xcode Simulators", `${HOME}/Library/Developer/CoreSimulator/Devices`, 3.07 * GB, ["insight"]),
+    item("Docker Data", DOCKER_DATA, 21.6 * GB, ["insight"]),
+    item("Xcode Simulators", SIMULATORS, 3.07 * GB, ["insight"]),
     topLevel(item("Old Downloads (90d+)", `${HOME}/Downloads`, OLD_DOWNLOADS_BYTES, ["insight"], OLD)),
     cleanHandles(item("Homebrew Cache", `${HOME}/Library/Caches/Homebrew`, 181 * MB, ["insight", "clean-handles"])),
     cleanHandles(item("System Logs", `${HOME}/Library/Logs`, 2.1 * MB, ["insight", "clean-handles"])),
@@ -188,6 +194,14 @@ export const libraryFolder = folder(
   66.3 * GB,
 );
 
+/** Docker's live data, opened from its Insight. */
+export const dockerDataFolder = folder(
+  DOCKER_DATA,
+  [item("vms", `${DOCKER_DATA}/vms`, 20 * GB), item("log", `${DOCKER_DATA}/log`, 1.6 * GB)],
+  21.6 * GB,
+  [file("Docker.raw", `${DOCKER_DATA}/vms/0/data/Docker.raw`, 19.8 * GB)],
+);
+
 /** A folder read in part, with nothing Mole could not read at all. */
 export const partlyReadFolder = folder(
   "/Library",
@@ -205,6 +219,7 @@ const KNOWN_FOLDERS = [
   projectsFolder,
   burrowFolder,
   libraryFolder,
+  dockerDataFolder,
   partlyReadFolder,
 ];
 

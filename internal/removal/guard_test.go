@@ -131,3 +131,20 @@ func TestGuardKeepsWhatLiesInsideAPersonalFolder(t *testing.T) {
 		t.Fatalf("Check = %q, %v, want it protected", reason, ok)
 	}
 }
+
+// Check has passed by then: what is left to go wrong is a path that changed
+// in between, which is not the same as being in use.
+func TestGuardSaysWhyItCouldNotCheckWhatIsInUse(t *testing.T) {
+	home := t.TempDir()
+	live := "Projects/live"
+	mkdir(t, home, live)
+	free := mkdir(t, home, "Projects/free")
+	guard := newGuard(t, home)
+
+	if reason, ok := guard.CheckInUse(free, []string{live}); !ok {
+		t.Errorf("CheckInUse(free) = %q, want it to pass", reason)
+	}
+	if reason, ok := guard.CheckInUse(filepath.Join(home, live, "inside"), []string{live}); reason != removal.AlreadyGone || ok {
+		t.Errorf("CheckInUse(a path gone meanwhile) = %q, %v, want already_gone", reason, ok)
+	}
+}

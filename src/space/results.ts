@@ -12,7 +12,8 @@ export function isInside(folder: string, path: string): boolean {
   return path.startsWith(`${folder}/`);
 }
 
-function isAtOrInside(folder: string, path: string): boolean {
+/** path is folder, or lies below it. */
+export function isAtOrInside(folder: string, path: string): boolean {
   return path === folder || isInside(folder, path);
 }
 

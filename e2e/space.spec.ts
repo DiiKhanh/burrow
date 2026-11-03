@@ -434,6 +434,44 @@ test("says a failed Move to Trash could not finish and keeps the picks", async (
   await expect(moveButton(page)).toHaveText("Move 1 item to Trash (3.3 GB)");
 });
 
+test("locks Docker Data while Docker is open and unlocks it once Docker quits", async ({ page }) => {
+  await page.goto("/?apps=Docker");
+  await page.keyboard.press("Meta+3");
+  const docker = page.getByRole("checkbox", { name: "Pick Docker Data" });
+  const row = page.getByRole("listitem").filter({ has: docker });
+
+  await expect(row).toContainText("Docker is open. Quit it to move this.");
+  await expect(docker).toBeDisabled();
+  await expect(docker).not.toBeChecked();
+  await expect(page.getByRole("checkbox", { name: "Pick Xcode Simulators" })).toBeEnabled();
+
+  await page.evaluate(() => window.burrowApps?.quit("Docker"));
+
+  await expect(docker).toBeEnabled();
+  await expect(row).not.toContainText("is open");
+  await docker.click();
+  await expect(moveButton(page)).toHaveText("Move 1 item to Trash (21.6 GB)");
+  expect(await page.evaluate(() => window.burrowFake?.measure.calls.length)).toBe(1);
+});
+
+test("locks what lies inside Docker Data and a folder that holds the simulators", async ({ page }) => {
+  await page.goto("/?apps=Docker,Simulator");
+  await page.keyboard.press("Meta+3");
+
+  await page.getByRole("button", { name: "Open Docker Data" }).click();
+  const contents = page.getByRole("region", { name: "Contents" });
+  await expect(contents.getByRole("listitem").first()).toContainText("Docker is open. Quit it to move this.");
+  await expect(page.getByRole("checkbox", { name: "Pick vms" })).toBeDisabled();
+  await expect(page.getByRole("checkbox", { name: "Pick log" })).toBeDisabled();
+  await expect(page.getByRole("checkbox", { name: "Pick Docker.raw" })).toBeDisabled();
+
+  await trail(page).getByRole("button", { name: "This Mac" }).click();
+  await page.getByRole("button", { name: "Open User Library" }).click();
+  const developer = contents.getByRole("listitem").filter({ hasText: "Developer" });
+  await expect(developer).toContainText("Simulator is open. Quit it to move this.");
+  await expect(developer.getByRole("checkbox")).toBeDisabled();
+});
+
 test("keeps the footer on screen while the list scrolls", async ({ page }) => {
   await page.setViewportSize({ width: 760, height: 560 });
   await openProject(page);

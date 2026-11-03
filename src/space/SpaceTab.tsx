@@ -1,8 +1,9 @@
 import { useEffect, useRef } from "react";
-import type { MeasureTarget } from "../mygo";
+import { type LockedItem, type MeasureTarget, Space } from "../mygo";
 import { useTabActive } from "../shell/activeTab";
 import { Notice } from "../shell/Notice";
 import { PillButton } from "../shell/PillButton";
+import { usePolled } from "../shell/usePolled";
 import { strings } from "../strings";
 import { Folder } from "./Folder";
 import { Overview } from "./Overview";
@@ -15,12 +16,14 @@ import { useTrash } from "./useTrash";
  * tab opens, and every folder opened from it. Results stay while other tabs
  * show, since every tab stays mounted, as do the picks, which the footer
  * moves to the Trash. A result measured before the last Clean ended, at
- * lastCleanAt, says so and stays until measured again.
+ * lastCleanAt, says so and stays until measured again. Which items are locked
+ * is asked only while the tab shows: nothing else reads it.
  */
 export function SpaceTab({ lastCleanAt }: { lastCleanAt: number | null }) {
   const active = useTabActive();
   const measures = useMeasures();
-  const trash = useTrash(measures);
+  const locks = usePolled<readonly LockedItem[]>([], Space.locked, active);
+  const trash = useTrash(measures, locks);
   const openedRef = useRef(false);
   const { trail, result, measuring, error } = measures;
   const { name, target } = lastCrumb(trail);

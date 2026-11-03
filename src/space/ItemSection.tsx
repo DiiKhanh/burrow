@@ -9,6 +9,8 @@ import type { PickState } from "./picks";
 /** How rows read and change what is picked. */
 export type Picker = {
   stateOf: (item: SpaceItem) => PickState;
+  /** The running apps that lock item, none while it is free. */
+  lockedBy: (item: SpaceItem) => readonly string[];
   onPick: (item: SpaceItem, on: boolean) => void;
 };
 
@@ -67,10 +69,17 @@ type RowProps = {
 function ItemRow({ item, share, detail, onOpen, picker }: RowProps) {
   // Its "Clean handles this" tag already says the third reason.
   const blocked = item.blocked === "clean-handles" ? null : item.blocked;
+  // A row with no checkbox has its own reason; a lock would add nothing.
+  const lockedBy = pickable(item) ? picker.lockedBy(item) : [];
+  const locked = lockedBy.length > 0;
   const name = (
     <>
       <span className="block truncate font-medium text-note">{item.name}</span>
-      {detail && <span className="block truncate font-mono text-label text-ink-faint">{detail}</span>}
+      {locked ? (
+        <span className="block truncate text-caption text-warn">{strings.space.locked(lockedBy)}</span>
+      ) : (
+        detail && <span className="block truncate font-mono text-label text-ink-faint">{detail}</span>
+      )}
     </>
   );
   return (
@@ -78,7 +87,7 @@ function ItemRow({ item, share, detail, onOpen, picker }: RowProps) {
       <svg aria-hidden="true" className="absolute inset-0 size-full" preserveAspectRatio="none">
         <rect width={`${share * 100}%`} height="100%" className="fill-size opacity-10" />
       </svg>
-      <PickBox item={item} picker={picker} />
+      <PickBox item={item} picker={picker} locked={locked} />
       {item.opens ? (
         <button
           type="button"
@@ -116,21 +125,21 @@ function ItemRow({ item, share, detail, onOpen, picker }: RowProps) {
   );
 }
 
-/**
- * The row's checkbox; a Space item a folder above covers shows ticked and
- * stays put. One a Measure could not read has no size to promise in the
- * button, whatever the engine would let through.
- */
-function PickBox({ item, picker }: { item: SpaceItem; picker: Picker }) {
-  if (item.blocked || item.readState === "unavailable")
-    return <span aria-hidden="true" className="relative size-4.5 shrink-0" />;
+/** One a Measure could not read has no size to promise in the button, whatever the engine would let through. */
+function pickable(item: SpaceItem): boolean {
+  return !item.blocked && item.readState !== "unavailable";
+}
+
+/** The row's checkbox; a Space item a folder above covers shows ticked and stays put, as does a locked one. */
+function PickBox({ item, picker, locked }: { item: SpaceItem; picker: Picker; locked: boolean }) {
+  if (!pickable(item)) return <span aria-hidden="true" className="relative size-4.5 shrink-0" />;
   const state = picker.stateOf(item);
   return (
     <span className="relative z-10 flex">
       <TriCheckbox
         label={strings.space.pick(item.name)}
         state={state === "covered" ? "all" : state}
-        disabled={state === "covered"}
+        disabled={locked || state === "covered"}
         onChange={(on) => picker.onPick(item, on)}
       />
     </span>

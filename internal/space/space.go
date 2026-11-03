@@ -186,11 +186,12 @@ type Measurer interface {
 
 // Engine is the deep module callers use for Space.
 type Engine struct {
-	measurer Measurer
-	home     string
-	reveal   func(path string)
-	remover  removal.Remover
-	logger   *slog.Logger
+	measurer  Measurer
+	home      string
+	reveal    func(path string)
+	remover   removal.Remover
+	processes removal.Processes
+	logger    *slog.Logger
 
 	mu sync.Mutex
 	// current holds, per target measured this session, the latest result's
@@ -208,11 +209,12 @@ type listing struct {
 // Options configures an Engine. Reveal shows a path in Finder: the app
 // passes mygo.Shell.ShowItemInFolder. Logger defaults to slog.Default.
 type Options struct {
-	Measurer Measurer
-	Home     string
-	Reveal   func(path string)
-	Remover  removal.Remover
-	Logger   *slog.Logger
+	Measurer  Measurer
+	Home      string
+	Reveal    func(path string)
+	Remover   removal.Remover
+	Processes removal.Processes
+	Logger    *slog.Logger
 }
 
 // NewEngine constructs an Engine from its adapters.
@@ -222,12 +224,13 @@ func NewEngine(options Options) *Engine {
 		logger = slog.Default()
 	}
 	return &Engine{
-		measurer: options.Measurer,
-		home:     filepath.Clean(options.Home),
-		reveal:   options.Reveal,
-		remover:  options.Remover,
-		logger:   logger,
-		current:  make(map[MeasureTarget]listing),
+		measurer:  options.Measurer,
+		home:      filepath.Clean(options.Home),
+		reveal:    options.Reveal,
+		remover:   options.Remover,
+		processes: options.Processes,
+		logger:    logger,
+		current:   make(map[MeasureTarget]listing),
 	}
 }
 

@@ -2,8 +2,8 @@
 // an immutable set of ids; Go gives an item the same id for its path, so they
 // outlive a new Measure. What a picked id means now comes from the results.
 import type { GroupState } from "../clean/selection";
-import type { MeasureResult, SpaceItem } from "../mygo";
-import { allItems, isInside } from "./results";
+import type { LockedItem, MeasureResult, SpaceItem } from "../mygo";
+import { allItems, isAtOrInside, isInside } from "./results";
 
 export type Picks = ReadonlySet<string>;
 
@@ -16,6 +16,21 @@ export function listedItems(results: Iterable<MeasureResult>): ReadonlyMap<strin
 /** The picked items results still list: Go no longer knows the others. */
 export function pickedItems(picks: Picks, listed: ReadonlyMap<string, SpaceItem>): SpaceItem[] {
   return [...picks].flatMap((id) => listed.get(id) ?? []);
+}
+
+/** The apps that lock item: it is or lies in their live data, or holds it, which would move along with it. */
+export function lockingApps(item: SpaceItem, locks: readonly LockedItem[]): string[] {
+  return locks.filter(({ path }) => isAtOrInside(path, item.path) || isInside(item.path, path)).map(({ app }) => app);
+}
+
+/**
+ * What a run takes of picked: nothing an app locks, and a folder without what
+ * it holds, which a pick made while the folder was locked can add. A locked
+ * pick stays out of it, so what it holds can be picked on its own meanwhile.
+ */
+export function movablePicks(picked: readonly SpaceItem[], locks: readonly LockedItem[]): SpaceItem[] {
+  const free = picked.filter((item) => lockingApps(item, locks).length === 0);
+  return free.filter((item) => !free.some(({ path }) => isInside(path, item.path)));
 }
 
 /** A row's checkbox: as a junk group's, or "covered" while a picked folder above holds the item. */

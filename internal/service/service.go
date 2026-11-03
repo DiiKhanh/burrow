@@ -69,10 +69,10 @@ func (s *Clean) Clean(ctx context.Context, ids []string, updates *mygo.Channel[c
 // once its apps quit, without a new Scan.
 func (s *Clean) Locked() ([]clean.LockedGroup, error) {
 	engine, err := s.currentEngine()
-	if err != nil {
-		return nil, err
+	var locked []clean.LockedGroup
+	if err == nil {
+		locked, err = engine.Locked()
 	}
-	locked, err := engine.Locked()
 	if err != nil {
 		log.Printf("service: listing locked junk groups: %v", err)
 	}
@@ -146,6 +146,17 @@ func (s *Space) MoveToTrash(ctx context.Context, ids []string, updates *mygo.Cha
 		return space.TrashReport{}, fmt.Errorf("service: moving to Trash: %w", context.Canceled)
 	}
 	return report, err
+}
+
+// Locked lists the locked Space items right now, so a row unlocks once its
+// app quits, without a new Measure.
+func (s *Space) Locked() ([]space.LockedItem, error) {
+	engine, err := s.currentEngine()
+	if err != nil {
+		log.Printf("service: listing locked Space items: %v", err)
+		return nil, err
+	}
+	return engine.Locked(), nil
 }
 
 func (s *Space) currentEngine() (*space.Engine, error) {
