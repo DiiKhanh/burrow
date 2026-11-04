@@ -14,7 +14,7 @@ concurrency:
 # A tag vX.Y.Z releases the version in mygo.config.ts, and vX.Y.Z-rc.1 makes
 # a pre-release of it; any other tag fails here, before anything is built.
 # The release then needs the whole of CI, and is the DMG of the very app its
-# own smoke test launched, with SHA256SUMS and the install guide of
+# own smoke test launched, with SHA256SUMS and the user guide of
 # release-notes.md above GitHub's generated notes. Nothing is uploaded for
 # auto-update.
 jobs:

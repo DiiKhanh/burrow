@@ -23,9 +23,15 @@ Do this again for every new version.
 
 ## Full Disk Access, after every update
 
-Burrow works without Full Disk Access but cannot read some places, such as the Trash. Each version has a new ad hoc signature, so macOS treats it as a new app and the access you gave the last one no longer applies. After installing a new version:
+Burrow works without Full Disk Access but cannot read some places, such as the Trash; Clean and Space show **Protected access unavailable** for them. Each version has a new ad hoc signature, so macOS treats it as a new app and the access you gave the last one no longer applies. After installing a new version:
 
 1. Open **System Settings › Privacy & Security › Full Disk Access**.
 2. If Burrow is in the list, select it and remove it with **−**.
 3. Click **+**, choose Burrow in Applications, and turn it on.
 4. Quit and reopen Burrow.
+
+## Space moves to the Trash, never deletes
+
+Space shows what takes up your disk and moves only what you pick to the Trash. Anything it moved can be put back: open the Trash in Finder, select it and choose **Put Back**. The disk space comes back only when you empty the Trash.
+
+You can pick only items inside your home folder, and never the home folder itself or what sits directly in it, such as Documents or Downloads: pick inside those instead. What Clean already empties, such as caches and logs, shows **Clean handles this**, and an item a running app uses, such as Docker's data while Docker is open, stays locked until you quit the app. Items outside your home folder, such as Applications or System Library, show **Reveal only**: Burrow shows them in Finder and leaves them to you.
