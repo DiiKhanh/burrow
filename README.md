@@ -1,11 +1,12 @@
 # Burrow
 
-Burrow is a free, open-source macOS app (Apple Silicon) that frees disk space and shows the live health of your Mac.
+Burrow is a free, open-source macOS app (Apple Silicon) that frees disk space, shows what takes it up, and shows the live health of your Mac.
 
 - **Clean** scans for junk, lets you review it group by group down to single paths, and removes only what you pick. Caches and logs are deleted; things you might miss go to the Trash.
 - **Status** shows CPU, memory, network, battery, disk and thermal health, refreshed every second.
+- **Space** shows what takes up the disk, folder by folder down to single files, and moves what you pick inside your home folder to the Trash, where it can be put back.
 
-Burrow is a work in progress. See the [v1 spec](https://github.com/DiiKhanh/burrow/issues/16).
+Burrow is a work in progress. See the [v1 spec](https://github.com/DiiKhanh/burrow/issues/16) and the [v2 spec](https://github.com/DiiKhanh/burrow/issues/58).
 
 ## Credits
 
