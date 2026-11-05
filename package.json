@@ -27,7 +27,7 @@
   "dependencies": {
     "@radix-ui/react-checkbox": "1.4.1",
     "@radix-ui/react-tabs": "1.2.1",
-    "mygo-runtime": "0.6.4",
+    "mygo-runtime": "0.7.4",
     "react": "19.3.1",
     "react-dom": "19.3.1"
   },
@@ -43,7 +43,7 @@
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "6.1.2",
     "jsdom": "30.1.3",
-    "mygo-cli": "0.6.4",
+    "mygo-cli": "0.7.4",
     "tailwindcss": "4.3.3",
     "typescript": "7.0.2",
     "vite": "8.3.5",
