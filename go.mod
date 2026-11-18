@@ -6,7 +6,7 @@ require (
 	github.com/caseymrm/go-smc v0.0.0-20260606234205-4a31024c8b63
 	github.com/egoist/mygo v0.6.4
 	golang.org/x/net v0.59.0
-	golang.org/x/sys v0.49.0
+	golang.org/x/sys v0.50.0
 )
 
 require (
