@@ -32,7 +32,12 @@ func TestDecodeStatusReadsEverySampleOfTheStream(t *testing.T) {
 		t.Fatalf("decoded %d samples, want 2", len(samples))
 	}
 
+	at, err := time.Parse(time.RFC3339Nano, "2026-10-23T00:46:46.847156+07:00")
+	if err != nil {
+		t.Fatal(err)
+	}
 	want := StatusSample{
+		CollectedAt: at, Details: StatusDetails{PerCore: []float64{35.8, 33, 28.3, 24.5, 37.3, 29.2, 30.5, 22.4}},
 		HealthScore: HealthScore{
 			Score:   ptr(77),
 			Level:   ptr(HealthGood),
@@ -94,7 +99,11 @@ func TestDecodeStatusLeavesMissingFieldsEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := StatusSample{CPU: CPU{Usage: ptr(0.0)}, Battery: &Battery{}}
+	at, err := time.Parse(time.RFC3339, "2026-10-23T00:46:45+07:00")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := StatusSample{CollectedAt: at, CPU: CPU{Usage: ptr(0.0)}, Battery: &Battery{}}
 	if !reflect.DeepEqual(samples, []StatusSample{want}) {
 		t.Errorf("samples = %+v, want %+v", samples, want)
 	}
@@ -122,6 +131,7 @@ func TestDecodeStatusReadsTheRemainingStatusCards(t *testing.T) {
 	}
 
 	want := StatusSample{
+		Details: StatusDetails{Interfaces: []Network{{DownloadBytesPerSecond: ptr(2.5 * 1024 * 1024), UploadBytesPerSecond: ptr(0.75 * 1024 * 1024), Interface: ptr("en0")}}, ThermalSource: "CPU package", Sensors: []Sensor{{Name: "CPU package", Celsius: 52.5}}},
 		Memory: Memory{
 			Used: ptr(uint64(12000000000)), Total: ptr(uint64(16000000000)), UsedPercent: ptr(75.0),
 			SwapUsed: ptr(uint64(500000000)), Pressure: ptr(MemoryWarn),
@@ -380,4 +390,16 @@ func deref[T any](p *T) any {
 		return nil
 	}
 	return *p
+}
+
+func TestAppTrafficRanksCurrentIntervalAcrossHelperProcesses(t *testing.T) {
+	input := "time,,bytes_in,bytes_out,\n23:59:59,Gone.9,9000,8000,\ntime,,bytes_in,bytes_out,\n00:00:01,Helper.1,40,10,\n00:00:01,Browser.2,40,20,\n00:00:01,Sync.3,0,90,\n00:00:01,Gone.9,9000,8000,\n"
+	rows, err := rankTraffic(strings.NewReader(input), map[string]string{"1": "Browser", "2": "Browser", "3": "Sync"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []AppTraffic{{Name: "Browser", Received: 40, Sent: 15}, {Name: "Sync", Received: 0, Sent: 45}}
+	if !reflect.DeepEqual(rows, want) {
+		t.Errorf("traffic = %+v, want %+v", rows, want)
+	}
 }

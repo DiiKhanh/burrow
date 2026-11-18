@@ -311,3 +311,53 @@ func values(series []*float64) []any {
 	}
 	return out
 }
+
+func sampleStream(samples ...mole.StatusSample) StatusSource {
+	return func(_ context.Context, yield func(mole.StatusSample)) error {
+		for _, sample := range samples {
+			yield(sample)
+		}
+		return nil
+	}
+}
+
+func TestWatchStatusExpiresHistoryAfterSleep(t *testing.T) {
+	at := time.Unix(100, 0)
+	snapshots, err := watchAll(t, sampleStream(
+		mole.StatusSample{CollectedAt: at, CPU: mole.CPU{Usage: ptr(85.0)}},
+		mole.StatusSample{CollectedAt: at.Add(10 * time.Minute), CPU: mole.CPU{Usage: ptr(0.0)}},
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := snapshots[1].Series.CPU
+	if len(got) != 1 || *got[0] != 0 {
+		t.Fatalf("after waking got %v, want only the new zero", values(got))
+	}
+}
+
+func TestWatchStatusSegmentsChangedSources(t *testing.T) {
+	at := time.Unix(100, 0)
+	snapshots, err := watchAll(t, sampleStream(
+		mole.StatusSample{CollectedAt: at, CPU: mole.CPU{Usage: ptr(2.0)}, Network: mole.Network{Interface: ptr("en0"), UploadBytesPerSecond: ptr(10.0)}, Details: mole.StatusDetails{ThermalSource: "Tp01"}, Thermal: mole.Thermal{CPUCelsius: ptr(65.0)}},
+		mole.StatusSample{CollectedAt: at.Add(3 * time.Second), CPU: mole.CPU{Usage: ptr(0.0)}, Network: mole.Network{Interface: ptr("utun1"), UploadBytesPerSecond: ptr(0.0)}, Details: mole.StatusDetails{ThermalSource: "Tp02"}, Thermal: mole.Thermal{CPUCelsius: ptr(55.0)}},
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	series := snapshots[1].Series
+	for _, tc := range []struct {
+		name      string
+		got, want []*float64
+	}{
+		{"CPU", series.CPU, []*float64{ptr(2.0), nil, nil, ptr(0.0)}},
+		{"network", series.NetworkUpload, []*float64{ptr(0.0)}},
+		{"temperature", series.ThermalCPU, []*float64{ptr(55.0)}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if !reflect.DeepEqual(tc.got, tc.want) {
+				t.Errorf("got %v, want %v", values(tc.got), values(tc.want))
+			}
+		})
+	}
+}

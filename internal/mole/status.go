@@ -14,11 +14,14 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // StatusSample is one reading of the Mac's health from the status
 // collector. A field is nil when Mole did not report it.
 type StatusSample struct {
+	CollectedAt   time.Time
+	Details       StatusDetails
 	HealthScore   HealthScore       `json:"healthScore"`
 	Hardware      Hardware          `json:"hardware"`
 	UptimeSeconds *uint64           `json:"uptimeSeconds"`
@@ -221,12 +224,14 @@ func (b Bundle) WatchStatus(ctx context.Context, home string, yield func(StatusS
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("mole: starting the status collector: %w", err)
 	}
+	var readings systemReadings
 	decodeErr := DecodeStatus(stdout, func(sample StatusSample) {
 		// Mole V1.62.0 swallows errors while walking ~/.Trash and reports zero.
 		// Keep an actual empty Trash distinct from protected access being denied.
 		if !trashSizeAvailable(home) {
 			sample.Disk.Trash = nil
 		}
+		readings.update(&sample)
 		yield(sample)
 	})
 	if decodeErr != nil {
@@ -284,9 +289,11 @@ func DecodeStatus(r io.Reader, yield func(StatusSample)) error {
 // snapshot is the part of the collector's MetricsSnapshot that Burrow
 // shows (cmd/status/metrics.go). Pointers tell a missing field from zero.
 type snapshot struct {
-	UptimeSeconds  *uint64 `json:"uptime_seconds"`
-	HealthScore    *int    `json:"health_score"`
-	HealthScoreMsg *string `json:"health_score_msg"`
+	CollectedAt    time.Time `json:"collected_at"`
+	ProcessStale   bool      `json:"process_stale"`
+	UptimeSeconds  *uint64   `json:"uptime_seconds"`
+	HealthScore    *int      `json:"health_score"`
+	HealthScoreMsg *string   `json:"health_score_msg"`
 	Hardware       struct {
 		Model     *string `json:"model"`
 		CPUModel  *string `json:"cpu_model"`
@@ -294,14 +301,18 @@ type snapshot struct {
 		OSVersion *string `json:"os_version"`
 	} `json:"hardware"`
 	CPU struct {
-		Usage      *float64 `json:"usage"`
-		Load1      *float64 `json:"load1"`
-		Load5      *float64 `json:"load5"`
-		Load15     *float64 `json:"load15"`
-		PCoreCount *int     `json:"p_core_count"`
-		ECoreCount *int     `json:"e_core_count"`
+		PerCore    []float64 `json:"per_core"`
+		Estimated  bool      `json:"per_core_estimated"`
+		Usage      *float64  `json:"usage"`
+		Load1      *float64  `json:"load1"`
+		Load5      *float64  `json:"load5"`
+		Load15     *float64  `json:"load15"`
+		PCoreCount *int      `json:"p_core_count"`
+		ECoreCount *int      `json:"e_core_count"`
 	} `json:"cpu"`
 	Memory *struct {
+		Available   *uint64  `json:"available"`
+		Cached      *uint64  `json:"cached"`
 		Used        *uint64  `json:"used"`
 		Total       *uint64  `json:"total"`
 		UsedPercent *float64 `json:"used_percent"`
@@ -333,6 +344,8 @@ type snapshot struct {
 		Capacity   *int     `json:"capacity"`
 	} `json:"batteries"`
 	Thermal *struct {
+		GPUTemp      *float64 `json:"gpu_temp"`
+		BatteryTemp  *float64 `json:"battery_temp"`
 		CPUTemp      *float64 `json:"cpu_temp"`
 		FanSpeed     *int     `json:"fan_speed"`
 		FanCount     *int     `json:"fan_count"`
@@ -355,12 +368,33 @@ type snapshot struct {
 func (s snapshot) sample(machineHasBattery *bool) StatusSample {
 	level, reasons := parseHealthMessage(s.HealthScoreMsg)
 	memory := s.memory()
-	network := s.primaryNetwork()
+	interfaces := s.networkInterfaces()
+	var network Network
+	if len(interfaces) == 1 {
+		network = interfaces[0]
+	}
 	battery := s.battery(machineHasBattery)
 	power, thermal := s.powerAndThermal()
 	disk := s.startupDisk()
 	disk.Trash = s.TrashSize
+	details := StatusDetails{Interfaces: interfaces}
+	if !s.CPU.Estimated {
+		details.PerCore = s.CPU.PerCore
+	}
+	if s.Memory != nil {
+		details.Available = s.Memory.Available
+		details.Cached = s.Memory.Cached
+	}
+	if s.Thermal != nil {
+		details.addSensor("CPU package", s.Thermal.CPUTemp)
+		details.addSensor("GPU", s.Thermal.GPUTemp)
+		details.addSensor("Battery", s.Thermal.BatteryTemp)
+		if thermal.CPUCelsius != nil {
+			details.ThermalSource = "CPU package"
+		}
+	}
 	return StatusSample{
+		CollectedAt: s.CollectedAt, Details: details,
 		HealthScore:   HealthScore{Score: s.HealthScore, Level: level, Reasons: reasons},
 		UptimeSeconds: s.UptimeSeconds,
 		// Mole's first, fast snapshot leaves hardware blank and cores at 0.
@@ -412,16 +446,15 @@ func (s snapshot) memory() Memory {
 	return Memory{Used: s.Memory.Used, Total: positiveUint(s.Memory.Total), UsedPercent: s.Memory.UsedPercent, SwapUsed: s.Memory.SwapUsed, Pressure: pressure}
 }
 
-func (s snapshot) primaryNetwork() Network {
-	if len(s.Network) == 0 {
-		return Network{}
+func (s snapshot) networkInterfaces() []Network {
+	var interfaces []Network
+	for _, n := range s.Network {
+		if nonEmpty(n.Name) == nil {
+			continue
+		}
+		interfaces = append(interfaces, Network{Interface: n.Name, DownloadBytesPerSecond: mebibytesToBytes(n.RxRateMBs), UploadBytesPerSecond: mebibytesToBytes(n.TxRateMBs)})
 	}
-	n := s.Network[0]
-	return Network{
-		DownloadBytesPerSecond: mebibytesToBytes(n.RxRateMBs),
-		UploadBytesPerSecond:   mebibytesToBytes(n.TxRateMBs),
-		Interface:              nonEmpty(n.Name),
-	}
+	return interfaces
 }
 
 func (s snapshot) batteryCapability() *bool {
@@ -534,6 +567,9 @@ func (s snapshot) bluetoothDevices() []BluetoothDevice {
 // topProcesses keeps the TopProcesses busiest by CPU, busiest first. Mole
 // already ranks them; sorting again keeps that promise if it ever stops.
 func (s snapshot) topProcesses() []Process {
+	if s.ProcessStale {
+		return nil
+	}
 	var processes []Process
 	for _, p := range s.TopProcesses {
 		// Mole leaves memory_bytes out when ps reports no resident memory.

@@ -7,7 +7,7 @@ import { fakeGo } from "./mygo.fake";
 
 describe("the MyGo client under test", () => {
   it("is the fake", async () => {
-    await expect(Status.ping()).resolves.toBeUndefined();
+    await expect(Status.enabled()).resolves.toEqual([]);
   });
 
   it("hands each call to the test to settle", async () => {

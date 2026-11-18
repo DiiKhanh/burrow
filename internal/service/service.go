@@ -168,11 +168,10 @@ func (s *Space) currentEngine() (*space.Engine, error) {
 	return s.engine, nil
 }
 
-// Status is the bound service behind the Status tab: live system health.
-type Status struct{}
+var OpenStatus = mygo.NewEvent[bool]("openStatus")
 
 // StatusSnapshot carries every Status snapshot to the page, once a second
-// while the window is shown. Each one holds the sparkline history, so the
+// while the window or an enabled menu item needs it. Each one holds the sparkline history, so the
 // page keeps no state of its own.
 var StatusSnapshot = mygo.NewEvent[engine.Snapshot]("status")
 
@@ -182,7 +181,3 @@ func BroadcastStatus(s engine.Snapshot) {
 		log.Printf("service: sending status: %v", err)
 	}
 }
-
-// Ping answers the page. MyGo binds only services with a method: remove it
-// once Status has its first real one.
-func (*Status) Ping() {}

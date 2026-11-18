@@ -212,3 +212,29 @@ test("keeps the retrying notice in view while scrolled to the process table", as
   await page.getByRole("table", { name: "Top processes" }).scrollIntoViewIfNeeded();
   await expect(page.getByRole("status")).toBeInViewport();
 });
+
+test("lets each menu item be enabled independently", async ({ page }) => {
+  await page.getByRole("tab", { name: "Status" }).click();
+  const group = page.getByRole("group", { name: "Show in menu bar" });
+  const network = group.getByRole("checkbox", { name: "Network" });
+  for (const box of await group.getByRole("checkbox").all()) await expect(box).not.toBeChecked();
+  await network.check();
+  await expect(network).toBeChecked();
+  await expect(group.getByRole("checkbox", { name: "CPU" })).not.toBeChecked();
+});
+
+test("CPU panel shows one real zero and gaps after waking", async ({ page }) => {
+  await page.goto("/?panel=cpu");
+  await sendStatus(
+    page,
+    snapshot({
+      series: { cpu: [null, 0] },
+      cpu: { usage: 0 },
+      sampleSecond: Math.floor(new Date(2026, 9, 23, 12).getTime() / 1000),
+    }),
+  );
+  await expect(page.getByText("100% equals one CPU core")).toBeVisible();
+  await expect(page.getByText("140%")).toBeVisible();
+  await expect(page.locator("svg rect")).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Open Status" })).toBeVisible();
+});

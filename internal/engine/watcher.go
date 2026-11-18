@@ -5,9 +5,8 @@ import (
 	"sync"
 )
 
-// StatusWatcher runs WatchStatus between Start and Stop. The app starts it
-// while Burrow's window is shown and stops it when the window hides,
-// minimizes or closes. History starts again on every Start.
+// StatusWatcher runs WatchStatus between Start and Stop. The window and menu items share a run
+// while either needs samples. History starts again on every Start.
 type StatusWatcher struct {
 	source StatusSource
 	sleep  Sleep
@@ -80,4 +79,13 @@ func (w *StatusWatcher) send(run uint64, s Snapshot) {
 	if current {
 		w.emit(s)
 	}
+}
+
+// Shutdown waits for the last collector to be reaped after the UI loop ends.
+func (w *StatusWatcher) Shutdown() {
+	w.Stop()
+	w.mu.Lock()
+	exited := w.exited
+	w.mu.Unlock()
+	<-exited
 }

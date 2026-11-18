@@ -152,8 +152,19 @@ export const Privacy = {
   },
 } as const satisfies typeof Real.Privacy;
 
+const enabledItems = new Set<string>();
 export const Status = {
-  ping: async () => {},
+  enabled: async () => [...enabledItems],
+  setEnabled: async (key: string, on: boolean) => {
+    if (on) enabledItems.add(key);
+    else enabledItems.delete(key);
+  },
+  latest: async () => null,
+  residentProcesses: async () => [],
+  applicationTraffic: async () => [],
+  showWindow: async () => {
+    events.openStatus.emit(true);
+  },
 } as const satisfies typeof Real.Status;
 
 /** An event the test sends in place of Go. */
@@ -186,6 +197,7 @@ function fakeEvent<T>(name: string): FakeEvent<T> {
 }
 
 export const events = {
+  openStatus: fakeEvent<boolean>("openStatus"),
   status: fakeEvent<Real.Snapshot>("status"),
 } as const satisfies typeof Real.events;
 
@@ -206,6 +218,7 @@ export type FakeGo = typeof fakeGo;
 
 /** Forgets every call and call listener, so each test starts from none. */
 export function resetFake() {
+  enabledItems.clear();
   scans.reset();
   cleans.reset();
   locks.reset();

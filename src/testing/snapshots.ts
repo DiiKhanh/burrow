@@ -28,6 +28,17 @@ const thermalSeries = Array.from({ length: 60 }, (_, i) => 42 + ((i * 5) % 14));
 
 export function snapshot(overrides: SnapshotOverrides = {}): Snapshot {
   const base: Snapshot = {
+    sampleSecond: Math.floor(Date.now() / 1000),
+    details: {
+      perCore: [],
+      user: null,
+      system: null,
+      cached: null,
+      available: null,
+      interfaces: [],
+      thermalSource: "",
+      sensors: [],
+    },
     healthScore: { score: 78, level: "good", reasons: ["restart-recommended"] },
     hardware: { cpuModel: "Apple M2", ram: "16.0 GB", osVersion: "macOS 15.7.9" },
     uptimeSeconds: 1_841_478,
@@ -60,6 +71,7 @@ export function snapshot(overrides: SnapshotOverrides = {}): Snapshot {
       { pid: 97, name: "Dock", cpu: 0.4, memoryBytes: 52_000_000 },
     ],
     series: {
+      networkUpload: [],
       cpu: cpuSeries,
       memory: memorySeries,
       networkDownload: networkSeries,
@@ -69,6 +81,8 @@ export function snapshot(overrides: SnapshotOverrides = {}): Snapshot {
     collector: "running",
   };
   return {
+    sampleSecond: overrides.sampleSecond ?? base.sampleSecond,
+    details: overrides.details ?? base.details,
     healthScore: { ...base.healthScore, ...overrides.healthScore },
     hardware: { ...base.hardware, ...overrides.hardware },
     uptimeSeconds: overrides.uptimeSeconds === undefined ? base.uptimeSeconds : overrides.uptimeSeconds,

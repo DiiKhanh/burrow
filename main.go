@@ -26,7 +26,8 @@ const windowBackground = "#1b1f31"
 func main() {
 	cleanService, configureClean := service.NewClean()
 	spaceService, configureSpace := service.NewSpace()
-	mygo.Bind(cleanService, spaceService, service.NewPrivacy(mygo.Shell.OpenExternal), &service.Status{})
+	status := &Status{items: make(map[string]*mygo.Tray)}
+	mygo.Bind(cleanService, spaceService, service.NewPrivacy(mygo.Shell.OpenExternal), status)
 	mygo.Theme.SetSource(mygo.ThemeDark)
 
 	mygo.App.WhenReady(func() {
@@ -71,27 +72,18 @@ func main() {
 		statusSource := func(ctx context.Context, yield func(mole.StatusSample)) error {
 			return bundle.WatchStatus(ctx, home, yield)
 		}
-		watchStatusWhileShown(win, engine.NewStatusWatcher(statusSource, service.BroadcastStatus))
+		status.start(win, engine.NewStatusWatcher(statusSource, status.publish), home)
 		if os.Getenv(automation.Env) == "1" {
 			go serveAutomation(win.Page())
 		}
 	})
-	if err := mygo.App.Run(); err != nil {
-		log.Fatalf("running Burrow: %v", err)
+	err := mygo.App.Run()
+	if status.watcher != nil {
+		status.watcher.Shutdown()
+		status.detailWorkers.Wait()
 	}
-}
-
-// watchStatusWhileShown runs Status only while win is on screen, on any
-// tab: hidden, minimized or closed, Burrow collects nothing.
-func watchStatusWhileShown(win *mygo.Window, watcher *engine.StatusWatcher) {
-	win.OnShow(watcher.Start)
-	win.OnRestore(watcher.Start)
-	win.OnHide(watcher.Stop)
-	win.OnMinimize(watcher.Stop)
-	win.OnClosed(watcher.Stop)
-	// NewWindow showed the window before these listeners existed.
-	if win.IsVisible() && !win.IsMinimized() {
-		watcher.Start()
+	if err != nil {
+		log.Fatalf("running Burrow: %v", err)
 	}
 }
 

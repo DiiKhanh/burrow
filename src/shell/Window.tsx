@@ -1,5 +1,6 @@
 import * as Tabs from "@radix-ui/react-tabs";
 import { type ReactNode, useEffect, useState } from "react";
+import { events } from "../mygo";
 import { SelectTab, TabActive } from "./activeTab";
 import { PillTabs } from "./PillTabs";
 import { isTab, TABS, type Tab, tabForShortcut } from "./tabs";
@@ -19,6 +20,7 @@ type Props = { panels: Record<Tab, ReactNode> };
 export function Window({ panels }: Props) {
   const [tab, setTab] = useState<Tab>("clean");
 
+  useEffect(() => events.openStatus.on(() => setTab("status")), []);
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const next = tabForShortcut(event);

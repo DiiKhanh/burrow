@@ -22,6 +22,8 @@ type StatusSource func(ctx context.Context, yield func(mole.StatusSample)) error
 // Snapshot is what the Status tab shows: the latest sample with the recent
 // history of each sparkline. A nil field could not be read.
 type Snapshot struct {
+	SampleSecond  int64                  `json:"sampleSecond"`
+	Details       mole.StatusDetails     `json:"details"`
 	HealthScore   mole.HealthScore       `json:"healthScore"`
 	Hardware      mole.Hardware          `json:"hardware"`
 	UptimeSeconds *uint64                `json:"uptimeSeconds"`
@@ -49,6 +51,8 @@ const (
 	// CollectorRetrying: the collector stopped and Burrow is starting it
 	// again. The values are the last ones it sent.
 	CollectorRetrying CollectorState = "retrying"
+	// CollectorStale means the collector has stopped sending current samples.
+	CollectorStale CollectorState = "stale"
 )
 
 // Series holds up to SeriesLength samples per sparkline, oldest first. A
@@ -57,6 +61,7 @@ type Series struct {
 	// CPU is the CPU usage in percent.
 	CPU             []*float64 `json:"cpu"`
 	Memory          []*float64 `json:"memory"`
+	NetworkUpload   []*float64 `json:"networkUpload"`
 	NetworkDownload []*float64 `json:"networkDownload"`
 	DiskRead        []*float64 `json:"diskRead"`
 	ThermalCPU      []*float64 `json:"thermalCPU"`
@@ -69,6 +74,8 @@ type Series struct {
 // nothing, up to 30s. History goes on across restarts.
 func WatchStatus(ctx context.Context, source StatusSource, sleep Sleep, emit func(Snapshot)) error {
 	var series Series
+	var previous int64
+	var network, thermal string
 	// What a restart before the first sample shows: nothing read yet. Like
 	// Mole before it knows the model, it keeps the Battery card in place.
 	last := Snapshot{Battery: &mole.Battery{}}
@@ -77,6 +84,35 @@ func WatchStatus(ctx context.Context, source StatusSource, sleep Sleep, emit fun
 		recovered := false
 		err := source(ctx, func(s mole.StatusSample) {
 			recovered = true
+			second := s.CollectedAt.Unix()
+			if !s.CollectedAt.IsZero() && previous != 0 {
+				switch gap := second - previous; {
+				case gap < 0 || gap >= SeriesLength:
+					series = Series{}
+				case gap == 0:
+					series = beforeLast(series)
+				default:
+					for range gap - 1 {
+						series = series.next(mole.StatusSample{})
+					}
+				}
+			}
+			if !s.CollectedAt.IsZero() {
+				previous = second
+			}
+			if n := s.Network.Interface; n != nil {
+				if network != "" && network != *n {
+					series.NetworkUpload = nil
+					series.NetworkDownload = nil
+				}
+				network = *n
+			}
+			if name := s.Details.ThermalSource; name != "" {
+				if thermal != "" && thermal != name {
+					series.ThermalCPU = nil
+				}
+				thermal = name
+			}
 			series = series.next(s)
 			last = snapshotOf(s, series)
 			emit(last)
@@ -123,6 +159,7 @@ func (series Series) next(s mole.StatusSample) Series {
 	return Series{
 		CPU:             latest(series.CPU, s.CPU.Usage),
 		Memory:          latest(series.Memory, s.Memory.UsedPercent),
+		NetworkUpload:   latest(series.NetworkUpload, s.Network.UploadBytesPerSecond),
 		NetworkDownload: latest(series.NetworkDownload, s.Network.DownloadBytesPerSecond),
 		DiskRead:        latest(series.DiskRead, s.DiskIO.ReadBytesPerSecond),
 		ThermalCPU:      latest(series.ThermalCPU, s.Thermal.CPUCelsius),
@@ -132,6 +169,7 @@ func (series Series) next(s mole.StatusSample) Series {
 // snapshotOf is what the Status tab shows for s, live.
 func snapshotOf(s mole.StatusSample, series Series) Snapshot {
 	return Snapshot{
+		SampleSecond: s.CollectedAt.Unix(), Details: s.Details,
 		HealthScore:   s.HealthScore,
 		Hardware:      s.Hardware,
 		UptimeSeconds: s.UptimeSeconds,
@@ -155,4 +193,14 @@ func snapshotOf(s mole.StatusSample, series Series) Snapshot {
 func latest(series []*float64, v *float64) []*float64 {
 	kept := series[max(0, len(series)-SeriesLength+1):]
 	return append(slices.Clip(kept), v)
+}
+
+// A fast startup sample and its full replacement may share a wall-clock second.
+func beforeLast(s Series) Series {
+	for _, values := range []*[]*float64{&s.CPU, &s.Memory, &s.NetworkUpload, &s.NetworkDownload, &s.DiskRead, &s.ThermalCPU} {
+		if n := len(*values); n > 0 {
+			*values = (*values)[:n-1]
+		}
+	}
+	return s
 }

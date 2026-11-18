@@ -4,6 +4,12 @@ import { call, event, type Channel } from "mygo-runtime";
 
 // ---- Types ----
 
+export interface AppTraffic {
+  name: string;
+  sent: number;
+  received: number;
+}
+
 /** Battery is nil when the Mac has no battery. */
 export interface Battery {
   percent: number | null;
@@ -80,7 +86,7 @@ export interface CleanedItem {
 }
 
 /** CollectorState says whether the values are live. */
-export type CollectorState = "running" | "retrying";
+export type CollectorState = "running" | "retrying" | "stale";
 
 /** Disk is the startup disk only. Trash is nil when protected access failed. */
 export interface Disk {
@@ -265,6 +271,11 @@ export interface ScanResult {
   locked: LockedGroup[];
 }
 
+export interface Sensor {
+  name: string;
+  celsius: number;
+}
+
 /**
  * Series holds up to SeriesLength samples per sparkline, oldest first. A
  * nil sample was missing from its reading.
@@ -273,6 +284,7 @@ export interface Series {
   /** CPU is the CPU usage in percent. */
   cpu: (number | null)[];
   memory: (number | null)[];
+  networkUpload: (number | null)[];
   networkDownload: (number | null)[];
   diskRead: (number | null)[];
   thermalCPU: (number | null)[];
@@ -289,6 +301,8 @@ export type SkipReason = "in_use" | "permission_denied" | "protected" | "already
  * history of each sparkline. A nil field could not be read.
  */
 export interface Snapshot {
+  sampleSecond: number;
+  details: StatusDetails;
   healthScore: HealthScore;
   hardware: Hardware;
   uptimeSeconds: number | null;
@@ -325,6 +339,17 @@ export interface SpaceItem {
   tags: Tag[];
   blocked: BlockReason | null;
   opens: MeasureTarget | null;
+}
+
+export interface StatusDetails {
+  perCore: number[];
+  user: number | null;
+  system: number | null;
+  cached: number | null;
+  available: number | null;
+  interfaces: Network[];
+  thermalSource: string;
+  sensors: Sensor[];
 }
 
 /** Tag is a stable, untranslated label on a Space item. */
@@ -444,14 +469,25 @@ export const Privacy = {
   },
 } as const;
 
-/** Status is the bound service behind the Status tab: live system health. */
+/** Status owns the four native items and their shared panel on MyGo's UI thread. */
 export const Status = {
-  /**
-   * Ping answers the page. MyGo binds only services with a method: remove it
-   * once Status has its first real one.
-   */
-  ping(): Promise<void> {
-    return call("Status.Ping");
+  applicationTraffic(): Promise<AppTraffic[]> {
+    return call("Status.ApplicationTraffic");
+  },
+  enabled(): Promise<string[]> {
+    return call("Status.Enabled");
+  },
+  latest(): Promise<Snapshot | null> {
+    return call("Status.Latest");
+  },
+  residentProcesses(): Promise<Process[]> {
+    return call("Status.ResidentProcesses");
+  },
+  setEnabled(key: string, on: boolean): Promise<void> {
+    return call("Status.SetEnabled", key, on);
+  },
+  showWindow(): Promise<void> {
+    return call("Status.ShowWindow");
   },
 } as const;
 
@@ -459,9 +495,10 @@ export const Status = {
 
 /** Events sent by the Go side. Subscribe with `events.name.on(listener)`. */
 export const events = {
+  openStatus: event<boolean>("openStatus"),
   /**
    * StatusSnapshot carries every Status snapshot to the page, once a second
-   * while the window is shown. Each one holds the sparkline history, so the
+   * while the window or an enabled menu item needs it. Each one holds the sparkline history, so the
    * page keeps no state of its own.
    */
   status: event<Snapshot>("status"),
