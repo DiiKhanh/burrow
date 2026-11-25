@@ -13,14 +13,8 @@ import {
   unreadableOverview,
 } from "../testing/measures";
 import { type CleanCall, fakeGo } from "../testing/mygo.fake";
+import { openOverview, openSpace } from "../testing/openSpace";
 import { fullScan } from "../testing/scans";
-
-async function openSpace() {
-  const user = userEvent.setup();
-  render(<App />);
-  await user.keyboard("{Meta>}3{/Meta}");
-  return user;
-}
 
 describe("Space Measure", () => {
   it("measures nothing until Space opens", () => {
@@ -120,13 +114,6 @@ describe("Space overview", () => {
 });
 
 const HOME = "/Users/test";
-
-/** Opens Space with the overview measured. */
-async function openOverview() {
-  const user = await openSpace();
-  await act(async () => fakeGo.measure.last.resolve(overview));
-  return user;
-}
 
 /** Opens the row named name and settles its Measure with the fake folder. */
 async function openFolder(user: ReturnType<typeof userEvent.setup>, name: string, path: string) {

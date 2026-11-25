@@ -1,22 +1,14 @@
-import { act, cleanup, render, screen, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { act, cleanup, screen, within } from "@testing-library/react";
+import type userEvent from "@testing-library/user-event";
 import { expect, it } from "vitest";
-import { App } from "../App";
 import type { MeasureResult } from "../mygo";
-import { downloadsFolder, homeFolder, libraryFolder, oldDownloadsFolder, overview } from "../testing/measures";
+import { downloadsFolder, homeFolder, libraryFolder, oldDownloadsFolder } from "../testing/measures";
 import { fakeGo } from "../testing/mygo.fake";
+import { openOverview } from "../testing/openSpace";
 
 const changes = "Since last Measure";
 const button = (name: string) => screen.getByRole("button", { name });
 const settle = (result: MeasureResult) => act(async () => fakeGo.measure.last.resolve(result));
-
-async function openOverview() {
-  const user = userEvent.setup();
-  render(<App />);
-  await user.keyboard("{Meta>}3{/Meta}");
-  await settle(overview);
-  return user;
-}
 
 it("shows the largest increase first while Contents still leads with the largest item", async () => {
   const user = await openOverview();
@@ -58,14 +50,17 @@ it.each(["cancelled", "failed", "superseded"] as const)(
     const attempt = fakeGo.measure.last;
     if (outcome === "failed") {
       await act(async () => attempt.reject());
-    } else {
-      if (outcome === "cancelled") {
-        await user.click(button("Cancel"));
-      } else {
-        await user.click(button("This Mac"));
-        await user.click(button("Open Home"));
-      }
+    } else if (outcome === "cancelled") {
+      await user.click(button("Cancel"));
       await act(async () => attempt.resolve(resized(homeFolder, "Downloads", 9e9)));
+    } else {
+      await user.click(button("This Mac"));
+      await user.click(button("Open User Library"));
+      await act(async () => attempt.resolve(resized(homeFolder, "Downloads", 9e9)));
+      expect(screen.getByRole("status", { name: "Measure progress" })).toBeVisible();
+      await settle(libraryFolder);
+      await user.click(button("This Mac"));
+      await user.click(button("Open Home"));
     }
 
     expect(screen.getByRole("row", { name: "Downloads 7.6 GB 8 GB +400 MB" })).toBeVisible();

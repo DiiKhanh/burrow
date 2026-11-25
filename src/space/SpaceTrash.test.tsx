@@ -5,20 +5,12 @@ import { App } from "../App";
 import type { LockedItem, SkipReason, TrashReport } from "../mygo";
 import { burrowFolder, downloadsFolder, folderAt, overview, projectsFolder } from "../testing/measures";
 import { fakeGo, type TrashCall } from "../testing/mygo.fake";
+import { openOverview } from "../testing/openSpace";
 
 const HOME = "/Users/test";
 const GB = 1e9;
 
 type User = ReturnType<typeof userEvent.setup>;
-
-/** Opens Space with the overview measured. */
-async function openOverview() {
-  const user = userEvent.setup();
-  render(<App />);
-  await user.keyboard("{Meta>}3{/Meta}");
-  await act(async () => fakeGo.measure.last.resolve(overview));
-  return user;
-}
 
 /** Opens the row named name, settling a Measure only if the session has not measured it. */
 async function open(user: User, name: string) {

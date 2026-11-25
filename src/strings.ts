@@ -335,6 +335,7 @@ export const strings = {
         before: "Before",
         now: "Now",
         change: "Change",
+        signedSize: (growing: boolean, size: string) => `${growing ? "+" : "-"}${size}`,
         empty: "No size changes among items fully measured both times.",
       },
       empty: "This folder is empty.",

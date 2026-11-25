@@ -49,8 +49,7 @@ export function MeasureChanges({ before, now }: Props) {
                   <td className="whitespace-nowrap px-3 py-2 font-mono">{formatBytes(bytes)}</td>
                   <td className="whitespace-nowrap px-3 py-2 font-mono">{formatBytes(item.bytes)}</td>
                   <td className="whitespace-nowrap px-3 py-2 font-mono font-semibold">
-                    {delta > 0 ? "+" : "-"}
-                    {formatBytes(Math.abs(delta))}
+                    {labels.signedSize(delta > 0, formatBytes(Math.abs(delta)))}
                   </td>
                 </tr>
               ))}
