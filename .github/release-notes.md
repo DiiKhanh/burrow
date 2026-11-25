@@ -1,3 +1,9 @@
+## Status in the menu bar
+
+Open Burrow's **Status** tab. Under **Show in menu bar**, turn on any of **CPU**, **Memory**, **Network**, or **Temperature**.
+
+Click an item in the macOS menu bar to see its latest reading and up to 60 seconds of history. Enabled items keep monitoring while the Burrow window is closed.
+
 ## Install
 
 Burrow runs on Macs with Apple Silicon and macOS 13 or later.
