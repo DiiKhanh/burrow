@@ -1,6 +1,7 @@
 import * as Tabs from "@radix-ui/react-tabs";
 import { type ReactNode, useEffect, useState } from "react";
 import { events } from "../mygo";
+import { inPrototype } from "../space/prototype-97/fixture";
 import { SelectTab, TabActive } from "./activeTab";
 import { PillTabs } from "./PillTabs";
 import { isTab, TABS, type Tab, tabForShortcut } from "./tabs";
@@ -18,7 +19,7 @@ type Props = { panels: Record<Tab, ReactNode> };
  * the title bar, and the background follows the tab.
  */
 export function Window({ panels }: Props) {
-  const [tab, setTab] = useState<Tab>("clean");
+  const [tab, setTab] = useState<Tab>(inPrototype ? "space" : "clean");
 
   useEffect(() => events.openStatus.on(() => setTab("status")), []);
   useEffect(() => {

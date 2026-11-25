@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Space · Folder Measure trial</title>
+<style>
+:root {color-scheme:dark;font:14px -apple-system,system-ui,sans-serif;color:#f5f5f7;background:#16211f}
+* {box-sizing:border-box} body {margin:0} main {display:grid;grid-template-rows:minmax(500px,1fr) auto;min-height:100vh}
+iframe {display:block;width:100%;height:100%;min-height:500px;border:0}
+form {padding:16px max(20px,calc((100% - 632px)/2));background:#1b2d2b;border-top:1px solid #ffffff20}
+label {display:block;margin-bottom:10px;font-weight:600} .entry {display:flex;gap:8px;flex-wrap:wrap}
+input,button {font:inherit;padding:8px 12px;border-radius:8px} input {flex:1;min-width:0;background:#16211f;color:inherit;border:1px solid #ffffff50} button {background:#f5f5f7;color:#111114;border:0;cursor:pointer}
+output {display:block;margin-top:6px;color:#c0d2d1} output:empty {display:none}
+</style>
+<main>
+<iframe title="Burrow Space prototype" src="http://localhost:5197/?variant=C"></iframe>
+<form data-lavish-question="First reading of variant C">
+<label for="reading">After Measure again, which folder grew the most, and by how much?</label>
+<div class="entry"><input id="reading" name="reading" autocomplete="off" required><button type="submit" data-lavish-action>Queue response</button></div>
+<output aria-live="polite"></output>
+</form>
+</main>
+<script>
+document.querySelector('form').addEventListener('submit', function(event) {
+  event.preventDefault();
+  const reading = this.elements.reading.value.trim();
+  if (!reading) return;
+  if (!window.lavish) {
+    this.querySelector('output').textContent = 'Send this response in the conversation.';
+    return;
+  }
+  window.lavish.queuePrompt(`Record this first reading from the Space viewer trial: ${reading}`, {tag:'viewer-trial',text:reading,element:this});
+  this.querySelector('output').textContent = 'Response queued. Use Send in the review toolbar.';
+});
+</script>
+</html>

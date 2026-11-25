@@ -2,6 +2,7 @@ import { Channel } from "mygo-runtime";
 import { useRef, useState } from "react";
 import { type MeasureResult, type MeasureTarget, type NoProgress, Space, type SpaceItem } from "../mygo";
 import { strings } from "../strings";
+import { inPrototype, project } from "./prototype-97/fixture";
 import { type Gone, isGone, keyOf, withoutGone } from "./results";
 
 type MeasureSession = { result: Promise<MeasureResult>; cancel: () => void };
@@ -57,7 +58,9 @@ export type Measures = {
  * instant. At most one Measure runs; starting another cancels it.
  */
 export function useMeasures(): Measures {
-  const [trail, setTrail] = useState<Trail>([ROOT]);
+  const [trail, setTrail] = useState<Trail>(
+    inPrototype ? [ROOT, { name: "burrow", target: { kind: "folder", path: project } }] : [ROOT],
+  );
   const [results, setResults] = useState<ReadonlyMap<string, MeasureResult>>(new Map());
   const [measuring, setMeasuring] = useState(false);
   const [error, setError] = useState<string | null>(null);

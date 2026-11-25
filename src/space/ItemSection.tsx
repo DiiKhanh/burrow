@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { type ReactNode, useId } from "react";
 import { TriCheckbox } from "../clean/TriCheckbox";
 import { formatBytes } from "../format";
 import { Space, type SpaceItem, type Tag } from "../mygo";
@@ -20,12 +20,13 @@ type Props = {
   items: readonly SpaceItem[];
   onOpen: (item: SpaceItem) => void;
   picker: Picker;
+  change?: (item: SpaceItem) => ReactNode;
   /** A line under an item's name, such as where a largest file lies; none when it returns "". */
   detail?: (item: SpaceItem) => string;
 };
 
 /** One list of Space items, each bar a share of the section's largest. */
-export function ItemSection({ title, hint, items, onOpen, picker, detail }: Props) {
+export function ItemSection({ title, hint, items, onOpen, picker, detail, change }: Props) {
   const headingId = useId();
   const largest = Math.max(0, ...items.map((item) => item.bytes));
   return (
@@ -41,6 +42,7 @@ export function ItemSection({ title, hint, items, onOpen, picker, detail }: Prop
           <ItemRow
             key={item.id}
             item={item}
+            change={change?.(item)}
             share={largest > 0 ? item.bytes / largest : 0}
             detail={detail?.(item) ?? ""}
             onOpen={onOpen}
@@ -55,6 +57,7 @@ export function ItemSection({ title, hint, items, onOpen, picker, detail }: Prop
 type RowProps = {
   item: SpaceItem;
   share: number;
+  change?: ReactNode;
   detail: string;
   onOpen: (item: SpaceItem) => void;
   picker: Picker;
@@ -66,7 +69,7 @@ type RowProps = {
  * it sit above. A file's row holds the chevron's place so sizes line up, and
  * a row that cannot be picked holds the checkbox's so names do.
  */
-function ItemRow({ item, share, detail, onOpen, picker }: RowProps) {
+function ItemRow({ item, share, detail, onOpen, picker, change }: RowProps) {
   // Its "Clean handles this" tag already says the third reason.
   const blocked = item.blocked === "clean-handles" ? null : item.blocked;
   // A row with no checkbox has its own reason; a lock would add nothing.
@@ -117,7 +120,14 @@ function ItemRow({ item, share, detail, onOpen, picker }: RowProps) {
       >
         {strings.space.reveal}
       </button>
-      <ItemSize item={item} />
+      {change ? (
+        <span className="relative flex shrink-0 flex-col items-end">
+          <ItemSize item={item} />
+          {change}
+        </span>
+      ) : (
+        <ItemSize item={item} />
+      )}
       <span aria-hidden="true" className="relative w-2 text-ink-faint text-note">
         {item.opens && strings.space.chevron}
       </span>

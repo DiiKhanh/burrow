@@ -10,6 +10,7 @@ import type {
   ScanResult,
   TrashReport,
 } from "../mygo";
+import { inPrototype, measureProject, project } from "../space/prototype-97/fixture";
 import { fakeItems, folderAt, LIVE_DATA, overview, unreadableOverview } from "./measures";
 import type { CleanCall, FakeGo, MeasureCall, ScanCall, TrashCall } from "./mygo.fake";
 import { fullScan, longScan, unreadableScan } from "./scans";
@@ -146,6 +147,10 @@ async function runMeasure(call: MeasureCall, scenario: string | null) {
   // As Go: stamped when the Measure starts, in how time.Time marshals a local time, nanoseconds and offset.
   const measuredAt = new Date(Date.now() + 7 * 3_600_000).toISOString().replace("Z", "456789+07:00");
   if (!(await stillRunning(call, 30)) || scenario === "running") return;
+  if (inPrototype && call.target.path === project) {
+    call.resolve(measureProject(call.target, measuredAt));
+    return;
+  }
   const whole = scenario === "unreadable" ? unreadableOverview : overview;
   const result = call.target.kind === "folder" ? folderAt(call.target) : whole;
   call.resolve({ ...result, measuredAt });
@@ -214,7 +219,10 @@ export function installAutopilot(go: FakeGo, search: string) {
   go.spaceLocked.onCall((call) => call.resolve(lockedItems(apps)));
   go.measure.onCall((call) => void runMeasure(call, scenarios.get("measure")));
   go.moveToTrash.onCall((call) => void runTrash(call, scenarios.get("trash")));
-  go.reveal.onCall((call) => call.resolve());
+  go.reveal.onCall((call) => {
+    if (inPrototype) window.alert(`Reveal in Finder (prototype)\n${call.id.replace(/^id:/, "")}`);
+    call.resolve();
+  });
   go.privacy.onCall((call) => {
     const settings = scenarios.get("settings");
     if (settings === "refused") call.reject(new Error("System Settings did not open"));

@@ -22,6 +22,7 @@
     "test:smoke": "go test -count=1 -tags smoke ./e2e/smoke/...",
     "test:realtrash": "go test -count=1 -tags realtrash ./e2e/realtrash/...",
     "dev:web": "vite",
+    "prototype:97": "vite --mode fake --port 5197 --open /?variant=C",
     "build:web": "vite build"
   },
   "dependencies": {

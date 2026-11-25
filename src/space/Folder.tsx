@@ -2,6 +2,8 @@ import type { ReactNode } from "react";
 import type { MeasureResult, MeasureTarget, SpaceItem } from "../mygo";
 import { strings } from "../strings";
 import { ItemSection, type Picker } from "./ItemSection";
+import { inPrototype, project } from "./prototype-97/fixture";
+import { GrowthPrototype } from "./prototype-97/GrowthPrototype";
 import { Total } from "./Total";
 import { UnreadableNotice } from "./UnreadableNotice";
 
@@ -22,7 +24,9 @@ export function Folder({ name, result, notice, onOpen, picker }: Props) {
       <Total bytes={result.totalBytes} label={totalLabel(result.target)} items={result.items} />
       {notice}
       <UnreadableNotice result={result} />
-      {result.items.length > 0 ? (
+      {inPrototype && result.target.path === project ? (
+        <GrowthPrototype result={result} onOpen={onOpen} picker={picker} />
+      ) : result.items.length > 0 ? (
         <ItemSection
           title={strings.space.folder.contents}
           hint={strings.space.count(result.items.length)}
