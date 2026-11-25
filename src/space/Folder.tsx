@@ -2,11 +2,14 @@ import type { ReactNode } from "react";
 import type { MeasureResult, MeasureTarget, SpaceItem } from "../mygo";
 import { strings } from "../strings";
 import { ItemSection, type Picker } from "./ItemSection";
+import { MeasureChanges } from "./MeasureChanges";
 import { Total } from "./Total";
 import { UnreadableNotice } from "./UnreadableNotice";
+import type { FolderMeasures } from "./useMeasures";
 
 type Props = {
   name: string;
+  measures?: FolderMeasures;
   result: MeasureResult;
   notice: ReactNode;
   onOpen: (item: SpaceItem) => void;
@@ -14,7 +17,7 @@ type Props = {
 };
 
 /** One measured folder: its total, what it holds, then its largest files anywhere below. */
-export function Folder({ name, result, notice, onOpen, picker }: Props) {
+export function Folder({ name, measures, result, notice, onOpen, picker }: Props) {
   const largestFiles = result.largestFiles ?? [];
   const { olderThanDays } = result.target;
   return (
@@ -22,6 +25,7 @@ export function Folder({ name, result, notice, onOpen, picker }: Props) {
       <Total bytes={result.totalBytes} label={totalLabel(result.target)} items={result.items} />
       {notice}
       <UnreadableNotice result={result} />
+      {measures?.previous && <MeasureChanges before={measures.previous} now={measures.current} />}
       {result.items.length > 0 ? (
         <ItemSection
           title={strings.space.folder.contents}

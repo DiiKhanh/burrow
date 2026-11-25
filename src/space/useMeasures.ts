@@ -34,7 +34,11 @@ function withoutGoneFolders(trail: Trail, gone: readonly Gone[]): Trail {
 
 const ROOT: Crumb = { name: strings.space.trail.root, target: { kind: "overview" } };
 
+/** Direct contents as measured, before Move to Trash adjusts the visible results. */
+export type FolderMeasures = { previous?: readonly SpaceItem[]; current: readonly SpaceItem[] };
+
 export type Measures = {
+  folderMeasures?: FolderMeasures;
   trail: Trail;
   /** The last Measure of the folder on screen, kept for the session. */
   result: MeasureResult | null;
@@ -59,6 +63,7 @@ export type Measures = {
 export function useMeasures(): Measures {
   const [trail, setTrail] = useState<Trail>([ROOT]);
   const [results, setResults] = useState<ReadonlyMap<string, MeasureResult>>(new Map());
+  const [folders, setFolders] = useState<ReadonlyMap<string, FolderMeasures>>(new Map());
   const [measuring, setMeasuring] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const sessionRef = useRef<MeasureSession | null>(null);
@@ -79,7 +84,11 @@ export function useMeasures(): Measures {
       (next) => {
         if (sessionRef.current !== session) return;
         sessionRef.current = null;
-        setResults((known) => new Map(known).set(keyOf(target), next));
+        const key = keyOf(target);
+        setResults((known) => new Map(known).set(key, next));
+        if (target.kind === "folder") {
+          setFolders((known) => new Map(known).set(key, { previous: known.get(key)?.current, current: next.items }));
+        }
         setMeasuring(false);
       },
       () => {
@@ -104,6 +113,7 @@ export function useMeasures(): Measures {
   const current = lastCrumb(trail);
   return {
     trail,
+    folderMeasures: folders.get(keyOf(current.target)),
     result: results.get(keyOf(current.target)) ?? null,
     results,
     measuring,

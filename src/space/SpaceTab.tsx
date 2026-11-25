@@ -63,7 +63,14 @@ export function SpaceTab({ lastCleanAt }: { lastCleanAt: number | null }) {
             (target.kind === "overview" ? (
               <Overview result={result} notice={notice} onOpen={measures.open} picker={trash.picker} />
             ) : (
-              <Folder name={name} result={result} notice={notice} onOpen={measures.open} picker={trash.picker} />
+              <Folder
+                measures={measures.folderMeasures}
+                name={name}
+                result={result}
+                notice={notice}
+                onOpen={measures.open}
+                picker={trash.picker}
+              />
             ))}
         </div>
       </div>

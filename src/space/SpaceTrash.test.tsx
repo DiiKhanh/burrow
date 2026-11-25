@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { App } from "../App";
 import type { LockedItem, SkipReason, TrashReport } from "../mygo";
-import { burrowFolder, downloadsFolder, folderAt, overview } from "../testing/measures";
+import { burrowFolder, downloadsFolder, folderAt, overview, projectsFolder } from "../testing/measures";
 import { fakeGo, type TrashCall } from "../testing/mygo.fake";
 
 const HOME = "/Users/test";
@@ -410,6 +410,24 @@ describe("Space sizes after Move to Trash", () => {
       "releaseReveal1.2 GB›",
       "srcReveal1.2 GB›",
     ]);
+  });
+
+  it("compares the original Measures even after a move adjusted the folder above", async () => {
+    const user = await openOverview();
+    await moveNodeModules(user);
+    await goTo(user, "Projects");
+    expect(row("Contents", "burrow")).toHaveTextContent("5.7 GB");
+
+    await user.click(screen.getByRole("button", { name: "Measure again" }));
+    await act(async () =>
+      fakeGo.measure.last.resolve({
+        ...projectsFolder,
+        items: projectsFolder.items.map((item) => (item.name === "burrow" ? { ...item, bytes: 6e9 } : item)),
+        totalBytes: 15.3e9,
+      }),
+    );
+
+    expect(screen.getByRole("row", { name: "burrow 12.1 GB 6 GB -6.1 GB" })).toBeVisible();
   });
 
   it("takes its size off every folder above, without measuring again", async () => {
