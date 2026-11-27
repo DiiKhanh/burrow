@@ -2,7 +2,7 @@
 // `vite --mode fake` for Playwright. `satisfies` keeps its shape in step with
 // the Go services. Every call waits until a test settles it through `fakeGo`;
 // in `--mode fake` the autopilot settles them by the page's URL scenario.
-import type { GoEvent } from "mygo-runtime";
+import type { CallOptions, Cancellable, GoEvent } from "mygo-runtime";
 import type * as Real from "../mygo";
 import { installAutopilot } from "./autopilot";
 
@@ -80,6 +80,27 @@ function pending<T>(): { promise: Promise<T> } & Pending<T> {
   };
 }
 
+/**
+ * Gives a fake method the shape of a generated one. A call made `with` a
+ * signal still reaches the test, and rejects with the signal's reason once it
+ * aborts, as MyGo's runtime does.
+ */
+function cancellable<A extends unknown[], R>(method: (...args: A) => Promise<R>): Cancellable<A, R> {
+  const withOptions =
+    ({ signal }: CallOptions) =>
+    (...args: A): Promise<R> => {
+      const result = method(...args);
+      if (!signal) return result;
+      if (signal.aborted) return Promise.reject(signal.reason);
+      return new Promise<R>((resolve, reject) => {
+        const abort = () => reject(signal.reason);
+        signal.addEventListener("abort", abort, { once: true });
+        result.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
+      });
+    };
+  return Object.assign(method, { with: withOptions });
+}
+
 /** Callers add to the call with Object.assign: a spread would freeze `cancelled` at false. */
 function streamCall<P, T>(updates: { onmessage: ((value: P) => void) | null; readonly closed: boolean }) {
   const settle = pending<T>();
@@ -104,67 +125,67 @@ const locks = callLog<LockedCall>("Clean.locked");
 const spaceLocks = callLog<SpaceLockedCall>("Space.locked");
 
 export const Clean = {
-  clean: (ids: string[], updates: CleanUpdates): Promise<Real.CleanReport> => {
+  clean: cancellable((ids: string[], updates: CleanUpdates): Promise<Real.CleanReport> => {
     const { call, promise } = streamCall<Real.CleanProgress, Real.CleanReport>(updates);
     cleans.record(Object.assign(call, { ids: [...ids] }));
     return promise;
-  },
-  locked: (): Promise<Real.LockedGroup[]> => {
+  }),
+  locked: cancellable((): Promise<Real.LockedGroup[]> => {
     const { promise, ...call } = pending<Real.LockedGroup[]>();
     locks.record(call);
     return promise;
-  },
-  scan: (updates: ScanUpdates): Promise<Real.ScanResult> => {
+  }),
+  scan: cancellable((updates: ScanUpdates): Promise<Real.ScanResult> => {
     const { call, promise } = streamCall<Real.ScanProgress, Real.ScanResult>(updates);
     scans.record(call);
     return promise;
-  },
+  }),
 } as const satisfies typeof Real.Clean;
 
 export const Space = {
-  locked: (): Promise<Real.LockedItem[]> => {
+  locked: cancellable((): Promise<Real.LockedItem[]> => {
     const { promise, ...call } = pending<Real.LockedItem[]>();
     spaceLocks.record(call);
     return promise;
-  },
-  measure: (target: Real.MeasureTarget, updates: MeasureUpdates): Promise<Real.MeasureResult> => {
+  }),
+  measure: cancellable((target: Real.MeasureTarget, updates: MeasureUpdates): Promise<Real.MeasureResult> => {
     const { call, promise } = streamCall<Real.NoProgress, Real.MeasureResult>(updates);
     measures.record(Object.assign(call, { target: { ...target } }));
     return promise;
-  },
-  moveToTrash: (ids: string[], updates: TrashUpdates): Promise<Real.TrashReport> => {
+  }),
+  moveToTrash: cancellable((ids: string[], updates: TrashUpdates): Promise<Real.TrashReport> => {
     const { call, promise } = streamCall<Real.TrashProgress, Real.TrashReport>(updates);
     trashes.record(Object.assign(call, { ids: [...ids] }));
     return promise;
-  },
-  reveal: (id: string): Promise<void> => {
+  }),
+  reveal: cancellable((id: string): Promise<void> => {
     const { promise, ...call } = pending<void>();
     reveals.record({ ...call, id });
     return promise;
-  },
+  }),
 } as const satisfies typeof Real.Space;
 
 export const Privacy = {
-  openFullDiskAccess: (): Promise<Real.SettingsPane> => {
+  openFullDiskAccess: cancellable((): Promise<Real.SettingsPane> => {
     const { promise, ...call } = pending<Real.SettingsPane>();
     privacy.record(call);
     return promise;
-  },
+  }),
 } as const satisfies typeof Real.Privacy;
 
 const enabledItems = new Set<string>();
 export const Status = {
-  enabled: async () => [...enabledItems],
-  setEnabled: async (key: string, on: boolean) => {
+  enabled: cancellable(async () => [...enabledItems]),
+  setEnabled: cancellable(async (key: string, on: boolean) => {
     if (on) enabledItems.add(key);
     else enabledItems.delete(key);
-  },
-  latest: async () => null,
-  residentProcesses: async () => [],
-  applicationTraffic: async () => [],
-  showWindow: async () => {
+  }),
+  latest: cancellable(async () => null),
+  residentProcesses: cancellable(async () => []),
+  applicationTraffic: cancellable(async () => []),
+  showWindow: cancellable(async () => {
     events.openStatus.emit(true);
-  },
+  }),
 } as const satisfies typeof Real.Status;
 
 /** An event the test sends in place of Go. */
