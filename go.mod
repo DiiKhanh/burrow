@@ -4,7 +4,7 @@ go 1.27.3
 
 require (
 	github.com/caseymrm/go-smc v0.0.0-20260606234205-4a31024c8b63
-	github.com/egoist/mygo v0.6.4
+	github.com/egoist/mygo v0.10.0
 	golang.org/x/net v0.63.0
 	golang.org/x/sys v0.50.0
 )

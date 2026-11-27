@@ -2,7 +2,7 @@
 // generated client: the real one rejects outside MyGo.
 import { Channel } from "mygo-runtime";
 import { describe, expect, it } from "vitest";
-import { Clean, type CleanProgress, type ScanProgress, Status } from "../mygo";
+import { Clean, type CleanProgress, Privacy, type ScanProgress, Status } from "../mygo";
 import { fakeGo } from "./mygo.fake";
 
 describe("the MyGo client under test", () => {
@@ -37,6 +37,30 @@ describe("the MyGo client under test", () => {
 
     updates.close();
     expect(fakeGo.clean.last.cancelled).toBe(true);
+  });
+
+  it("passes a call made with options to the test", async () => {
+    const result = Privacy.openFullDiskAccess.with({ signal: new AbortController().signal })();
+
+    fakeGo.privacy.last.resolve("full-disk-access");
+
+    await expect(result).resolves.toBe("full-disk-access");
+  });
+
+  it("rejects a call with its signal's reason when the signal aborts, as MyGo does", async () => {
+    const abort = new AbortController();
+    const result = Privacy.openFullDiskAccess.with({ signal: abort.signal })();
+
+    abort.abort(new Error("left the page"));
+
+    await expect(result).rejects.toThrow("left the page");
+    expect(fakeGo.privacy.calls).toHaveLength(1);
+  });
+
+  it("rejects a call made with an aborted signal", async () => {
+    const result = Privacy.openFullDiskAccess.with({ signal: AbortSignal.abort(new Error("too late")) })();
+
+    await expect(result).rejects.toThrow("too late");
   });
 
   it("names the method a test expected to be called", () => {
